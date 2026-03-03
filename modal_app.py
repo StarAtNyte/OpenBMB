@@ -40,17 +40,14 @@ soar_image = (
 )
 
 # Image with GPU-dependent packages pre-built
-soar_image_with_flash = (
-    soar_image
-    .run_commands(
-        [
-            # Install flash-attn and quantization libraries with GPU
-            "pip install flash-attn --no-build-isolation",
-            "pip install gptqmodel",
-            "pip install autoawq",  # AWQ quantization (SGLang compatible)
-        ],
-        gpu="H100",  # GPU required for compilation
-    )
+soar_image_with_flash = soar_image.run_commands(
+    [
+        # Install flash-attn and quantization libraries with GPU
+        "pip install flash-attn --no-build-isolation",
+        "pip install gptqmodel",
+        "pip install autoawq",  # AWQ quantization (SGLang compatible)
+    ],
+    gpu="H100",  # GPU required for compilation
 )
 
 # Persistent volumes
@@ -77,7 +74,9 @@ def wait_for_server(host="localhost", port=30000, timeout=600, server_proc=None)
                     print(f"Server output: {remaining[:2000]}")
             except:
                 pass
-            raise RuntimeError(f"Server process died with code {server_proc.returncode}")
+            raise RuntimeError(
+                f"Server process died with code {server_proc.returncode}"
+            )
 
         try:
             resp = httpx.get(f"http://{host}:{port}/health", timeout=5)
@@ -115,10 +114,15 @@ def start_sglang_server(
     )
 
     cmd = [
-        "python", "-m", "sglang.launch_server",
-        "--model-path", model_path,
-        "--host", "0.0.0.0",
-        "--port", str(port),
+        "python",
+        "-m",
+        "sglang.launch_server",
+        "--model-path",
+        model_path,
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(port),
     ] + default_args.split()
 
     if quantization:
@@ -199,12 +203,14 @@ def generate_speed_data(output_path: str, num_samples: int = 50):
     for _ in range(num_samples):
         input_len = random_input_length()
         output_len = random_output_length()
-        samples.append({
-            "question": "x " * (input_len // 2),
-            "model_response": "y " * (output_len // 2),
-            "_input_len": input_len,
-            "_output_len": output_len,
-        })
+        samples.append(
+            {
+                "question": "x " * (input_len // 2),
+                "model_response": "y " * (output_len // 2),
+                "_input_len": input_len,
+                "_output_len": output_len,
+            }
+        )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
@@ -216,8 +222,12 @@ def generate_speed_data(output_path: str, num_samples: int = 50):
     input_lens = [s["_input_len"] for s in samples]
     output_lens = [s["_output_len"] for s in samples]
     print(f"Generated {num_samples} samples to {output_path}")
-    print(f"  Input:  min={min(input_lens)}, max={max(input_lens)}, avg={sum(input_lens)//len(input_lens)}")
-    print(f"  Output: min={min(output_lens)}, max={max(output_lens)}, avg={sum(output_lens)//len(output_lens)}")
+    print(
+        f"  Input:  min={min(input_lens)}, max={max(input_lens)}, avg={sum(input_lens) // len(input_lens)}"
+    )
+    print(
+        f"  Output: min={min(output_lens)}, max={max(output_lens)}, avg={sum(output_lens) // len(output_lens)}"
+    )
 
     return output_path
 
@@ -244,9 +254,11 @@ def download_model():
     print("Downloading MiniCPM-SALA from HuggingFace...")
     subprocess.run(
         [
-            "huggingface-cli", "download",
+            "huggingface-cli",
+            "download",
             "OpenBMB/MiniCPM-SALA",
-            "--local-dir", "/models/MiniCPM-SALA",
+            "--local-dir",
+            "/models/MiniCPM-SALA",
         ],
         env=env,
         check=True,
@@ -313,7 +325,10 @@ def build_kernel(
             kernel_path = p
             break
     else:
-        return {"success": False, "error": f"Kernel path not found. Did you sync your code?"}
+        return {
+            "success": False,
+            "error": f"Kernel path not found. Did you sync your code?",
+        }
 
     os.chdir(kernel_path)
     print(f"Building kernel from: {kernel_path}")
@@ -325,28 +340,39 @@ def build_kernel(
             content = cmake_path.read_text()
             # Comment out third-party installs
             patterns = [
-                r'install\(TARGETS deep_gemm_cpp[^\)]*\)',
+                r"install\(TARGETS deep_gemm_cpp[^\)]*\)",
                 r'install\(DIRECTORY "\$\{repo-deepgemm_SOURCE_DIR\}[^\)]*\)',
                 r'install\(DIRECTORY "\$\{repo-triton_SOURCE_DIR\}[^\)]*\)',
                 r'install\(DIRECTORY "\$\{FLASH_ATTN_CUTE_DST\}[^\)]*\)',
-                r'install\(FILES \$\{CMAKE_CURRENT_BINARY_DIR\}/deepgemm_pkg_init[^\)]*\)',
+                r"install\(FILES \$\{CMAKE_CURRENT_BINARY_DIR\}/deepgemm_pkg_init[^\)]*\)",
                 r'install\(DIRECTORY "\$\{repo-cutlass_SOURCE_DIR\}/include/cute/"[^\)]*\)',
                 r'install\(DIRECTORY "\$\{repo-cutlass_SOURCE_DIR\}/include/cutlass/"[^\)]*\)',
             ]
             for pattern in patterns:
-                content = re.sub(pattern, lambda m: f"# SOAR_DISABLED: {m.group(0)}", content, flags=re.MULTILINE)
+                content = re.sub(
+                    pattern,
+                    lambda m: f"# SOAR_DISABLED: {m.group(0)}",
+                    content,
+                    flags=re.MULTILINE,
+                )
             cmake_path.write_text(content)
             print("Patched CMakeLists.txt for competition compliance")
 
     # Clean and build
     subprocess.run(["rm", "-rf", "build/", "dist/"], check=False)
-    subprocess.run(["pip", "install", "build", "wheel", "scikit-build-core", "cmake", "ninja"], check=True)
+    subprocess.run(
+        ["pip", "install", "build", "wheel", "scikit-build-core", "cmake", "ninja"],
+        check=True,
+    )
 
     print("\nBuilding wheel...")
     result = subprocess.run(["python", "-m", "build", "--wheel", "--no-isolation"])
 
     if result.returncode != 0:
-        return {"success": False, "error": f"Build failed with code {result.returncode}"}
+        return {
+            "success": False,
+            "error": f"Build failed with code {result.returncode}",
+        }
 
     # Find wheel
     wheels = glob.glob("dist/*.whl")
@@ -358,9 +384,16 @@ def build_kernel(
 
     # Validate wheel contents
     import zipfile
+
     with zipfile.ZipFile(wheel_path, "r") as zf:
-        top_level = set(name.split("/")[0] for name in zf.namelist() if name.split("/")[0])
-        violations = [d for d in top_level if not d.startswith("sgl_kernel") and not d.endswith(".dist-info")]
+        top_level = set(
+            name.split("/")[0] for name in zf.namelist() if name.split("/")[0]
+        )
+        violations = [
+            d
+            for d in top_level
+            if not d.startswith("sgl_kernel") and not d.endswith(".dist-info")
+        ]
 
         if violations:
             print(f"\n⚠️  WARNING: Disallowed directories: {violations}")
@@ -371,7 +404,11 @@ def build_kernel(
     subprocess.run(["pip", "install", "--force-reinstall", wheel_path], check=True)
     workspace_volume.commit()
 
-    return {"success": True, "wheel": wheel_path, "violations": violations if violations else None}
+    return {
+        "success": True,
+        "wheel": wheel_path,
+        "violations": violations if violations else None,
+    }
 
 
 # ============================================================================
@@ -405,7 +442,9 @@ def run_eval(
                 wheels = glob.glob(f"{wheel_dir}/*.whl")
                 if wheels:
                     print(f"Installing custom kernel: {wheels[0]}")
-                    subprocess.run(["pip", "install", "--force-reinstall", wheels[0]], check=True)
+                    subprocess.run(
+                        ["pip", "install", "--force-reinstall", wheels[0]], check=True
+                    )
                     break
 
     proc = start_sglang_server(extra_args=extra_args, quantization=quantization)
@@ -414,6 +453,7 @@ def run_eval(
     def stream_server_logs():
         for line in proc.stdout:
             print(f"[server] {line.rstrip()}", flush=True)
+
     log_thread = threading.Thread(target=stream_server_logs, daemon=True)
     log_thread.start()
 
@@ -421,11 +461,16 @@ def run_eval(
         wait_for_server(server_proc=proc)
 
         cmd = [
-            "python3", "/opt/SOAR/eval_model.py",
-            "--api_base", "http://localhost:30000",
-            "--model_path", "/models/MiniCPM-SALA",
-            "--data_path", "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
-            "--concurrency", str(concurrency),
+            "python3",
+            "/opt/SOAR/eval_model.py",
+            "--api_base",
+            "http://localhost:30000",
+            "--model_path",
+            "/models/MiniCPM-SALA",
+            "--data_path",
+            "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
+            "--concurrency",
+            str(concurrency),
         ]
         if num_samples:
             cmd.extend(["--num_samples", str(num_samples)])
@@ -434,7 +479,11 @@ def run_eval(
         output, returncode = run_streaming(cmd, label="eval")
 
         # Parse accuracy
-        acc_match = re.search(r"(?:Average Score|Accuracy|overall_accuracy):\s*([0-9.]+)%?", output, re.IGNORECASE)
+        acc_match = re.search(
+            r"(?:Average Score|Accuracy|overall_accuracy):\s*([0-9.]+)%?",
+            output,
+            re.IGNORECASE,
+        )
         accuracy = float(acc_match.group(1)) if acc_match else None
 
         if accuracy is not None:
@@ -505,7 +554,9 @@ def run_benchmark(
                 wheels = glob.glob(f"{wheel_dir}/*.whl")
                 if wheels:
                     print(f"Installing custom kernel: {wheels[0]}")
-                    subprocess.run(["pip", "install", "--force-reinstall", wheels[0]], check=True)
+                    subprocess.run(
+                        ["pip", "install", "--force-reinstall", wheels[0]], check=True
+                    )
                     break
 
     # Generate test data
@@ -519,6 +570,7 @@ def run_benchmark(
     def stream_server_logs():
         for line in proc.stdout:
             print(f"[server] {line.rstrip()}", flush=True)
+
     log_thread = threading.Thread(target=stream_server_logs, daemon=True)
     log_thread.start()
 
@@ -545,7 +597,11 @@ def run_benchmark(
 
             # Set environment for bench_serving.sh
             env = os.environ.copy()
-            env_var = {"S1": "SPEED_DATA_S1", "S8": "SPEED_DATA_S8", "Smax": "SPEED_DATA_SMAX"}[level]
+            env_var = {
+                "S1": "SPEED_DATA_S1",
+                "S8": "SPEED_DATA_S8",
+                "Smax": "SPEED_DATA_SMAX",
+            }[level]
             env[env_var] = speed_data_path
 
             # Clear other env vars to run only this level
@@ -566,7 +622,9 @@ def run_benchmark(
 
             if duration:
                 bounty = {"S1": 420, "S8": 420, "Smax": 720}[level]
-                status = "✓ BEATS BOUNTY" if duration <= bounty else f"(need: {bounty}s)"
+                status = (
+                    "✓ BEATS BOUNTY" if duration <= bounty else f"(need: {bounty}s)"
+                )
                 print(f"\n→ {level}: {duration:.2f}s {status}")
 
         # Summary
@@ -616,7 +674,9 @@ def run_baseline(
     if quick:
         num_eval_samples = num_eval_samples or 20
         num_speed_samples = 20
-        print(f"[QUICK MODE] {num_eval_samples} eval samples, {num_speed_samples} speed samples\n")
+        print(
+            f"[QUICK MODE] {num_eval_samples} eval samples, {num_speed_samples} speed samples\n"
+        )
 
     # Install custom kernel if requested
     if use_custom_kernel:
@@ -625,7 +685,9 @@ def run_baseline(
                 wheels = glob.glob(f"{wheel_dir}/*.whl")
                 if wheels:
                     print(f"Installing custom kernel: {wheels[0]}")
-                    subprocess.run(["pip", "install", "--force-reinstall", wheels[0]], check=True)
+                    subprocess.run(
+                        ["pip", "install", "--force-reinstall", wheels[0]], check=True
+                    )
                     break
 
     # Generate speed data
@@ -658,18 +720,27 @@ def run_baseline(
         print(f"{'=' * 60}\n")
 
         eval_cmd = [
-            "python3", "/opt/SOAR/eval_model.py",
-            "--api_base", "http://localhost:30000",
-            "--model_path", "/models/MiniCPM-SALA",
-            "--data_path", "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
-            "--concurrency", "32",
+            "python3",
+            "/opt/SOAR/eval_model.py",
+            "--api_base",
+            "http://localhost:30000",
+            "--model_path",
+            "/models/MiniCPM-SALA",
+            "--data_path",
+            "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
+            "--concurrency",
+            "32",
         ]
         if num_eval_samples:
             eval_cmd.extend(["--num_samples", str(num_eval_samples)])
 
         eval_output, _ = run_streaming(eval_cmd, label="eval")
 
-        acc_match = re.search(r"(?:Average Score|Accuracy|overall_accuracy):\s*([0-9.]+)%?", eval_output, re.IGNORECASE)
+        acc_match = re.search(
+            r"(?:Average Score|Accuracy|overall_accuracy):\s*([0-9.]+)%?",
+            eval_output,
+            re.IGNORECASE,
+        )
         accuracy = float(acc_match.group(1)) if acc_match else None
         results["accuracy"] = accuracy
 
@@ -690,11 +761,14 @@ def run_baseline(
                 results["c_coefficient"] = 1.0
 
         # Steps 2-4: Speed benchmarks
-        for step, (level, env_var) in enumerate([
-            ("S1", "SPEED_DATA_S1"),
-            ("S8", "SPEED_DATA_S8"),
-            ("Smax", "SPEED_DATA_SMAX"),
-        ], start=2):
+        for step, (level, env_var) in enumerate(
+            [
+                ("S1", "SPEED_DATA_S1"),
+                ("S8", "SPEED_DATA_S8"),
+                ("Smax", "SPEED_DATA_SMAX"),
+            ],
+            start=2,
+        ):
             print(f"\n{'=' * 60}")
             print(f"  STEP {step}: SPEED BENCHMARK [{level}]")
             print(f"{'=' * 60}\n")
@@ -711,7 +785,9 @@ def run_baseline(
             )
 
             duration_match = re.search(r"Benchmark duration \(s\):\s+([0-9.]+)", output)
-            results["speed"][level] = float(duration_match.group(1)) if duration_match else None
+            results["speed"][level] = (
+                float(duration_match.group(1)) if duration_match else None
+            )
 
         # Summary
         print(f"\n{'╔' + '═' * 58 + '╗'}")
@@ -736,7 +812,9 @@ def run_baseline(
         for level in ["S1", "S8", "Smax"]:
             dur = results["speed"][level]
             if dur:
-                status = "✓ BOUNTY" if dur <= bounties[level] else f"need {bounties[level]}s"
+                status = (
+                    "✓ BOUNTY" if dur <= bounties[level] else f"need {bounties[level]}s"
+                )
                 line = f"  {level}: {dur:.2f}s [{weights[level]}] {status}"
             else:
                 line = f"  {level}: FAILED [{weights[level]}]"
@@ -750,16 +828,20 @@ def run_baseline(
         os.makedirs(results_dir, exist_ok=True)
 
         with open(f"{results_dir}/summary.json", "w") as f:
-            json.dump({
-                "timestamp": timestamp,
-                **results,
-                "config": {
-                    "num_eval_samples": num_eval_samples,
-                    "num_speed_samples": num_speed_samples,
-                    "use_custom_kernel": use_custom_kernel,
-                    "quantization": quantization,
+            json.dump(
+                {
+                    "timestamp": timestamp,
+                    **results,
+                    "config": {
+                        "num_eval_samples": num_eval_samples,
+                        "num_speed_samples": num_speed_samples,
+                        "use_custom_kernel": use_custom_kernel,
+                        "quantization": quantization,
+                    },
                 },
-            }, f, indent=2)
+                f,
+                indent=2,
+            )
 
         workspace_volume.commit()
         print(f"\nResults saved to: {results_dir}")
@@ -811,7 +893,12 @@ def create_submission(
 
     with tarfile.open(tarball_path, "w:gz") as tar:
         # Add submission scripts
-        for script in ["prepare_env.sh", "prepare_model.sh", "preprocess_model.py"]:
+        for script in [
+            "prepare_env.sh",
+            "prepare_model.sh",
+            "preprocess_model.py",
+            "quantize_gptq.py",
+        ]:
             script_path = f"{submission_dir}/{script}"
             if os.path.exists(script_path):
                 tar.add(script_path, arcname=script)
@@ -874,6 +961,7 @@ def test_gptq_quantization(
 
     try:
         import flash_attn
+
         print(f"  ✓ flash-attn {flash_attn.__version__} available")
     except ImportError:
         print("  ⚠ flash-attn not in image, installing (this takes 10-30 min)...")
@@ -890,20 +978,29 @@ def test_gptq_quantization(
         except ImportError:
             print(f"  Installing {lib}...")
             pkg = "autoawq" if lib == "awq" else lib
-            subprocess.run(["pip", "install", pkg, "--no-cache-dir"], capture_output=True)
+            subprocess.run(
+                ["pip", "install", pkg, "--no-cache-dir"], capture_output=True
+            )
 
     # Run quantization (will try multiple methods with fallbacks)
     quant_output = "/workspace/quantized_model"
     print(f"\nQuantizing to {quant_output}...")
 
     quant_cmd = [
-        "python3", "/workspace/submission/preprocess_model.py",
-        "--input", "/models/MiniCPM-SALA",
-        "--output", quant_output,
-        "--mode", "gptq",
-        "--bits", str(bits),
-        "--group-size", str(group_size),
-        "--calibration-samples", str(calibration_samples),
+        "python3",
+        "/workspace/submission/preprocess_model.py",
+        "--input",
+        "/models/MiniCPM-SALA",
+        "--output",
+        quant_output,
+        "--mode",
+        "gptq",
+        "--bits",
+        str(bits),
+        "--group-size",
+        str(group_size),
+        "--calibration-samples",
+        str(calibration_samples),
     ]
 
     result = subprocess.run(quant_cmd, capture_output=False)
@@ -947,11 +1044,17 @@ def test_gptq_quantization(
 
     proc = subprocess.Popen(
         [
-            "python", "-m", "sglang.launch_server",
-            "--model-path", quant_output,
-            "--host", "0.0.0.0",
-            "--port", "30000",
-        ] + server_args.split(),
+            "python",
+            "-m",
+            "sglang.launch_server",
+            "--model-path",
+            quant_output,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "30000",
+        ]
+        + server_args.split(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -961,6 +1064,7 @@ def test_gptq_quantization(
     def stream_logs():
         for line in proc.stdout:
             print(f"[server] {line.rstrip()}", flush=True)
+
     log_thread = threading.Thread(target=stream_logs, daemon=True)
     log_thread.start()
 
@@ -970,12 +1074,18 @@ def test_gptq_quantization(
         # Quick eval
         print("\nRunning quick eval (20 samples)...")
         eval_cmd = [
-            "python3", "/opt/SOAR/eval_model.py",
-            "--api_base", "http://localhost:30000",
-            "--model_path", quant_output,
-            "--data_path", "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
-            "--concurrency", "16",
-            "--num_samples", "20",
+            "python3",
+            "/opt/SOAR/eval_model.py",
+            "--api_base",
+            "http://localhost:30000",
+            "--model_path",
+            quant_output,
+            "--data_path",
+            "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
+            "--concurrency",
+            "16",
+            "--num_samples",
+            "20",
         ]
 
         output, _ = run_streaming(eval_cmd, label="eval")
@@ -1126,7 +1236,15 @@ WORKFLOW:
             if Path(local_path).exists():
                 print(f"Syncing {local_path} -> Modal volume...")
                 result = subprocess.run(
-                    ["modal", "volume", "put", "soar-workspace", local_path, "/", "--force"]
+                    [
+                        "modal",
+                        "volume",
+                        "put",
+                        "soar-workspace",
+                        local_path,
+                        "/",
+                        "--force",
+                    ]
                 )
                 if result.returncode == 0:
                     print(f"✓ Synced {local_path}")
@@ -1183,7 +1301,7 @@ WORKFLOW:
             print(f"\n✓ Package created: {result['path']}")
             print(f"  Size: {result['size_mb']:.2f} MB")
             print(f"\nDownload with:")
-            print(f"  modal volume get soar-workspace /workspace/packages ./packages")
+            print(f"  modal volume get soar-workspace /packages ./packages --force")
         else:
             print(f"\n✗ Failed: {result.get('error')}")
 

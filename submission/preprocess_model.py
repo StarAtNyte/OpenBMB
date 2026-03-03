@@ -14,19 +14,21 @@ import argparse
 import json
 import os
 import shutil
-import time
-import torch
+import sys
 from pathlib import Path
-from safetensors.torch import load_file, save_file
 
 
-def quantize_weight_rtn(weight: torch.Tensor, bits: int = 4, group_size: int = 128):
+def quantize_weight_rtn(weight, bits: int = 4, group_size: int = 128):
     """
     RTN quantize a single linear layer weight to GPTQ-compatible packed format.
 
     weight shape : [out_features, in_features]
     Returns      : qweight, scales, qzeros, g_idx
+
+    Note: weight should be a torch.Tensor
     """
+    import torch
+
     out_features, in_features = weight.shape
     pack_factor = 32 // bits
     maxq = 2 ** bits - 1
@@ -113,6 +115,10 @@ def quantize_rtn(
     Works directly on tensors without model forward passes.
     Saves in GPTQ-compatible format for SGLang.
     """
+    import time
+    import torch
+    from safetensors.torch import load_file, save_file
+
     start_time = time.time()
 
     print("=" * 60)

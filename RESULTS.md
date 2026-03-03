@@ -103,27 +103,113 @@ Option B: **Focus on other optimizations** (pragmatic)
 
 ---
 
-## Iteration 2: [Pending]
+## Iteration 2: RTN W4A16 Quantization (GPTQ mode)
 
-**Date**: YYYY-MM-DD
+**Date**: 2026-03-02
+**Environment**: Modal H100
+**Config**: `--quantization gptq --dtype float16 --disable-cuda-graph --disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --dense-as-sparse`
+
 **Changes**:
-- [ ] TODO
+- [x] RTN W4A16 quantization (manual tensor-level, GPTQ-compatible format)
+- [x] Patched minicpm_backend.py: bfloat16 → float16
+- [x] Using `--quantization gptq` (not Marlin)
+- [x] CUDA graph disabled for stability
 
 ### Correctness
 
 | Metric | Value | vs Baseline |
 |--------|-------|-------------|
-| Raw Accuracy | --% | -- |
-| Relative Score | --% | -- |
-| C Coefficient | -- | -- |
+| Raw Accuracy | 81.18% | -0.13% |
+| Relative Score | 101.48% | -0.16% |
+| C Coefficient | **1.0** ✓ | Same |
 
 ### Speed
 
-| Level | Duration | vs Baseline | Target |
-|-------|----------|-------------|--------|
-| S1 | --s | -- | 420s |
-| S8 | --s | -- | 420s |
-| Smax | --s | -- | 720s |
+| Level | Duration | vs Baseline | Target | Status |
+|-------|----------|-------------|--------|--------|
+| S1 | 2034.40s | **2.7x SLOWER** | 420s | ❌ |
+| S8 | 545.35s | **3.2x SLOWER** | 420s | ❌ |
+| Smax | 406.29s | **2.4x SLOWER** | 720s | ✅ |
+
+### Analysis
+
+**REGRESSION**: Quantization made things SLOWER, not faster!
+
+Likely causes:
+1. **`--disable-cuda-graph`** - Major performance hit, but was needed for stability
+2. **`--quantization gptq`** - Uses slow dequantization without Marlin kernels
+3. **RTN quality** - Round-to-nearest may produce suboptimal weights
+
+Eval throughput was 407 tokens/s (vs 361 baseline = +13%), but benchmark duration regressed significantly. The `--disable-cuda-graph` flag is likely the main culprit.
+
+### Next Steps
+
+1. **Try Marlin kernels**: `--quantization gptq_marlin` (faster dequant GEMM)
+2. **Enable CUDA graph**: Remove `--disable-cuda-graph`
+3. **If still slow**: Abandon quantization, focus on other optimizations
+
+---
+
+## Iteration 3: RTN W4A16 + Marlin + FP8 KV + CUDA Graph
+
+**Date**: 2026-03-03
+**Environment**: Modal H100
+**Config**: `--quantization gptq_marlin --dtype float16 --kv-cache-dtype fp8_e5m2 --disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --dense-as-sparse`
+
+**Changes**:
+- [x] RTN W4A16 quantization (based on official demo-quant)
+- [x] Marlin kernels (`--quantization gptq_marlin`)
+- [x] FP8 KV cache (`--kv-cache-dtype fp8_e5m2`)
+- [x] CUDA graph enabled (removed `--disable-cuda-graph`)
+- [x] Patched minicpm_backend.py: bfloat16 → float16
+
+### Speed
+
+| Level | Duration | vs Baseline | vs Iter 2 | Target | Status |
+|-------|----------|-------------|-----------|--------|--------|
+| S1 | 1124.94s | **+48% SLOWER** | -45% (better) | 420s | ❌ |
+| S8 | 337.50s | **+99% SLOWER** | -38% (better) | 420s | ✅ |
+| Smax | 301.66s | **+79% SLOWER** | -26% (better) | 720s | ✅ |
+
+### Analysis
+
+**Mixed Results**:
+- ✅ **Marlin + CUDA graph improved** vs Iteration 2 (GPTQ without Marlin)
+- ❌ **Still slower than FP16 baseline** - quantization overhead not compensated
+- ✅ S8 and Smax beat bounty targets
+- ❌ S1 still 2.7x the target (1125s vs 420s)
+
+**Why quantization is slower**:
+1. RTN quality may be suboptimal (no calibration data)
+2. Dequantization overhead on H100 (even with Marlin)
+3. FP16 baseline might already be well-optimized
+4. Quantization helps more on memory-constrained GPUs
+
+**Output throughput**: ~305 tokens/s (vs 361 baseline, 407 in Iteration 2 eval)
+
+### Next Steps
+
+**Option A: Abandon quantization, optimize FP16 baseline**
+- Focus on kernel fusion, prefill optimization
+- Tune chunked-prefill-size, memory settings
+- Try speculative decoding (EAGLE3)
+
+**Option B: Try different quantization approach**
+- AWQ instead of GPTQ/RTN
+- Calibration-based GPTQ (if SALA compatibility can be solved)
+- FP8 instead of W4A16
+
+**Option C: Submit current version**
+- S8 and Smax beat targets
+- Focus on improving S1 through other means
+
+---
+
+## Iteration 4: [Pending]
+
+**Date**: YYYY-MM-DD
+**Changes**:
+- [ ] TBD based on Iteration 3 analysis
 
 ---
 
