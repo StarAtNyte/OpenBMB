@@ -3,4 +3,4 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-python3 "${SCRIPT_DIR}/quantize_gptq.py" "$@"
+python3 "${SCRIPT_DIR}/preprocess_model.py" "$@"

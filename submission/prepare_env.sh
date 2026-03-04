@@ -1,22 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 echo "[prepare_env] start $(date '+%F %T')"
 
-# ---- patch minicpm_backend hardcoded bfloat16 -> float16 for GPTQ compat ----
-BACKEND_DIR=/opt/SGLang-MiniCPM-SALA/packages/sglang-minicpm/python/sglang/srt/layers/attention
+uv pip install --no-deps -e ./sglang/python
 
-for pyfile in "$BACKEND_DIR"/minicpm_backend.py "$BACKEND_DIR"/minicpm_sparse_utils.py; do
-    if [ -f "$pyfile" ]; then
-        sed -i 's/torch\.bfloat16/torch.float16/g'  "$pyfile"
-        sed -i 's/"bfloat16"/"float16"/g'            "$pyfile"
-        echo "[prepare_env] patched $(basename "$pyfile")"
-    fi
-done
-find "$BACKEND_DIR/__pycache__" -name "minicpm_backend*" -o -name "minicpm_sparse_utils*" 2>/dev/null | xargs rm -f
+export SGLANG_SERVER_ARGS="${SGLANG_SERVER_ARGS:-} --log-level info"
 
-# ---- override SGLang launch args for GPTQ (improved RTN with group_size=128) ----
-export SGLANG_SERVER_ARGS="--disable-radix-cache --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --skip-server-warmup --dense-as-sparse --quantization gptq --dtype float16 --disable-cuda-graph"
-
-echo "[prepare_env] SGLANG_SERVER_ARGS=${SGLANG_SERVER_ARGS}"
 echo "[prepare_env] done"

@@ -1,28 +1,54 @@
-# Demo: GPTQ W4A16 量化提交包
+# MiniCPM-SALA 提交 Demo
 
-本 demo 展示如何通过 `prepare_env.sh` + `prepare_model.sh` 接口，对 MiniCPM-SALA 模型进行 RTN W4A16 量化，并以 GPTQ 格式在 SGLang 中加载运行。
+本目录是一个最小可运行的提交示例，演示如何按照平台要求组织 `prepare_env.sh` + `prepare_model.sh` 提交包。
 
-## 文件说明
+## 目录结构
 
-| 文件 | 说明 |
+```
+.
+├── prepare_env.sh          # 必须 — 环境构建脚本
+├── prepare_model.sh        # 可选 — 模型预处理入口
+├── preprocess_model.py     # prepare_model.sh 调用的 Python 脚本
+└── sglang/python/          # 自定义 sglang 源码（editable install）
+```
+
+## 各文件说明
+
+### `prepare_env.sh`（必须）
+
+平台在基础环境启动后自动执行此脚本。本 demo 中做了两件事：
+
+1. 用 `uv pip install --no-deps -e ./sglang/python` 将自定义 sglang 以 editable 模式安装，替换镜像内置版本
+2. 通过 `export SGLANG_SERVER_ARGS` 追加推理启动参数（示例中添加了 `--log-level info`）
+
+```bash
+uv pip install --no-deps -e ./sglang/python
+export SGLANG_SERVER_ARGS="${SGLANG_SERVER_ARGS:-} --log-level info"
+```
+
+> **注意**：`prepare_env.sh` 会被 `source` 进入平台主脚本，因此 `export` 的环境变量可以直接生效。
+
+### `prepare_model.sh`（可选）
+
+平台在环境就绪后调用此脚本，接口固定为：
+
+```bash
+bash prepare_model.sh --input <原始模型路径> --output <处理后模型路径>
+```
+
+两个路径均由平台提供，选手无需关心容器内的具体挂载位置。本 demo 中仅做简单的模型文件复制，不做任何量化或转换。
+
+实际参赛时，可以在 `preprocess_model.py` 中实现量化（GPTQ、AWQ 等）、剪枝、权重融合等预处理逻辑。
+
+### `sglang/python/`
+
+自定义的 sglang 源码目录。通过 editable install，平台会使用此目录下的代码替代镜像内置 sglang，选手可以在此修改推理引擎的实现。
+
+## 扩展示例
+
+| 场景 | 修改点 |
 |---|---|
-| `prepare_env.sh` | 环境准备：patch SGLang 注意力后端 dtype、设置 `SGLANG_SERVER_ARGS` |
-| `prepare_model.sh` | 模型预处理入口，调用 `quantize_gptq.py` |
-| `quantize_gptq.py` | RTN W4A16 量化脚本，将权重转为 GPTQ 格式 |
-
-## 执行流程
-
-1. **`prepare_env.sh`**（由平台 `source` 执行）
-   - 将 SGLang 注意力后端中硬编码的 `bfloat16` 替换为 `float16`，以兼容 GPTQ 量化
-   - 导出 `SGLANG_SERVER_ARGS`，添加 `--quantization gptq --dtype float16 --disable-cuda-graph`
-
-2. **`prepare_model.sh --input <模型路径> --output <输出路径>`**
-   - 对所有线性层权重执行 RTN (Round-To-Nearest) 4-bit 量化
-   - 生成 SGLang 兼容的 GPTQ 格式权重（qweight / scales / qzeros / g_idx）
-   - 写入 `config.json` 和 `quantize_config.json`
-
-## 注意事项
-
-- 本 demo 使用 RTN 量化（无需校准数据），精度不如真正的 GPTQ，仅作为格式示例
-- 量化后模型约为原始模型的 1/4 大小
-- `group_size=1024`，可在 `quantize_gptq.py` 中调整
+| 安装额外 pip 包 | `prepare_env.sh` 中添加 `uv pip install xxx` |
+| 自定义推理参数 | `prepare_env.sh` 中修改 `SGLANG_SERVER_ARGS` |
+| GPTQ 量化 | `preprocess_model.py` 中实现 GPTQ 打包，`prepare_env.sh` 中追加 `--quantization gptq` |
+| 模型剪枝/蒸馏 | `preprocess_model.py` 中实现，输出到 `--output` 目录 |

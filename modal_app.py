@@ -935,6 +935,70 @@ def create_submission(
 
 
 # ============================================================================
+# Check Model Architecture
+# ============================================================================
+@app.function(
+    image=soar_image,
+    gpu=None,  # No GPU needed, just read config
+    timeout=60,
+    volumes={"/models": model_volume},
+)
+def check_model_architecture():
+    """Check if MiniCPM-SALA supports hybrid_linear_attn backend."""
+    import json
+    from pathlib import Path
+
+    model_path = Path("/models/MiniCPM-SALA")
+    config_path = model_path / "config.json"
+
+    if not config_path.exists():
+        return {"error": f"Config not found at {config_path}"}
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    output = []
+    output.append("=== MiniCPM-SALA Model Config ===")
+    output.append(f"Model Type: {config.get('model_type', 'N/A')}")
+    output.append(f"Architecture: {config.get('architectures', ['N/A'])[0]}")
+    output.append(f"Num Layers: {config.get('num_hidden_layers', 'N/A')}")
+
+    # Check for hybrid indicators
+    output.append("\n=== Hybrid Architecture Check ===")
+
+    if config.get('model_type') == 'bailing_hybrid':
+        output.append("[YES] Model type is 'bailing_hybrid' - HYBRID BACKEND SUPPORTED!")
+        output.append(f"   Layer group size: {config.get('layer_group_size', 'N/A')}")
+        hybrid_supported = True
+    else:
+        # Check for other hybrid indicators
+        hybrid_keys = ['hybrid_config', 'linear_attention_layers', 'mambaish_config', 'layer_group_size']
+        found = [k for k in hybrid_keys if k in config]
+
+        if found:
+            output.append(f"[YES] Found hybrid indicators: {', '.join(found)}")
+            hybrid_supported = True
+        else:
+            output.append("[NO] No hybrid architecture indicators found")
+            output.append("   Will use standard minicpm_flashinfer backend")
+            hybrid_supported = False
+
+    # Show relevant config keys
+    output.append("\n=== Key Config Fields ===")
+    relevant_keys = ['model_type', 'architectures', 'num_hidden_layers', 'hidden_size',
+                     'num_attention_heads', 'layer_group_size', 'linear_silu']
+    for key in relevant_keys:
+        if key in config:
+            output.append(f"  {key}: {config[key]}")
+
+    return {
+        "hybrid_supported": hybrid_supported,
+        "model_type": config.get('model_type'),
+        "output": "\n".join(output)
+    }
+
+
+# ============================================================================
 # Test GPTQ Quantization
 # ============================================================================
 @app.function(
@@ -1312,6 +1376,12 @@ WORKFLOW:
             calibration_samples=num_samples or 256,  # GPTQModel recommends >= 256
         )
         print(f"\nResult: {result}")
+
+    elif cmd == "check-model":
+        print("Checking MiniCPM-SALA model config...\n")
+        result = check_model_architecture.remote()
+        print(f"\n{result.get('output', str(result))}")
+        print(f"\nHybrid Supported: {result.get('hybrid_supported', 'Unknown')}")
 
     elif cmd == "shell":
         print("Use: modal shell modal_app.py::dev_shell")
