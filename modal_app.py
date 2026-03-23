@@ -1,12 +1,12 @@
 """
 SOAR 2026 Competition - Modal Labs Development Environment
 
-Development on Modal H100 GPUs, submission for SOAR RTX PRO (6000) GPUs.
+Development on Modal RTX PRO 6000 GPUs (same as SOAR evaluation hardware).
 
 Workflow:
 1. Edit code locally in sglang/sgl-kernel/ or submission/
 2. Sync to Modal: modal run modal_app.py --cmd sync
-3. Build and test on Modal H100
+3. Build and test on Modal RTX PRO 6000
 4. Create submission package: modal run modal_app.py --cmd package
 5. Submit .tar.gz to SOAR platform
 """
@@ -47,7 +47,7 @@ soar_image_with_flash = soar_image.run_commands(
         "pip install gptqmodel",
         "pip install autoawq",  # AWQ quantization (SGLang compatible)
     ],
-    gpu="H100",  # GPU required for compilation
+    gpu="RTX-PRO-6000",  # GPU required for compilation
 )
 
 # Persistent volumes
@@ -237,7 +237,7 @@ def generate_speed_data(output_path: str, num_samples: int = 50):
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=3600,
     volumes={"/models": model_volume},
 )
@@ -296,7 +296,7 @@ def check_workspace():
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=7200,
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -416,7 +416,7 @@ def build_kernel(
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=7200,
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -523,7 +523,7 @@ def run_eval(
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=14400,  # 4 hours
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -650,7 +650,7 @@ def run_benchmark(
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=18000,  # 5 hours
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -858,7 +858,7 @@ def run_baseline(
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=3600,
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -999,11 +999,118 @@ def check_model_architecture():
 
 
 # ============================================================================
+# FP8 W8A8 Quantization + Eval
+# ============================================================================
+@app.function(
+    image=soar_image,
+    gpu="RTX-PRO-6000",
+    timeout=7200,  # 2 hours: quant ~20min + eval
+    volumes={"/models": model_volume, "/workspace": workspace_volume},
+)
+def test_fp8_quantization(num_samples: int = 50):
+    """
+    Quantize MiniCPM-SALA to FP8 W8A8, start server, run eval.
+
+    Uses preprocess_model.py (copies model + patches config for online FP8).
+    SGLang loads FP16 weights and quantizes to FP8 at load time (~1-2 min overhead).
+    SGLang flag: --quantization fp8
+    Expected: ~2x prefill throughput vs FP16 baseline.
+    """
+    import threading
+
+    quant_output = "/workspace/fp8_model"
+
+    # Step 1: Quantize
+    print("=" * 60)
+    print("Step 1: FP8 W8A8 Quantization")
+    print("=" * 60)
+
+    quant_cmd = [
+        "python3", "/workspace/submission/preprocess_model.py",
+        "--input",  "/models/MiniCPM-SALA",
+        "--output", quant_output,
+    ]
+    out, rc = run_streaming(quant_cmd, label="quant")
+    if rc != 0:
+        return {"success": False, "error": "FP8 quantization failed", "log": out[-2000:]}
+    print(f"\nQuantization done. Output: {quant_output}")
+
+    # Step 2: Start SGLang server with fp8
+    print("\n" + "=" * 60)
+    print("Step 2: Starting SGLang server (w8a8_fp8)")
+    print("=" * 60)
+
+    server_args = (
+        "--disable-radix-cache "
+        "--attention-backend minicpm_flashinfer "
+        "--chunked-prefill-size 8192 "
+        "--mem-fraction-static 0.70 "
+        "--dense-as-sparse "
+        "--skip-server-warmup "
+        "--quantization fp8"
+    )
+    proc = subprocess.Popen(
+        ["python", "-m", "sglang.launch_server",
+         "--model-path", quant_output,
+         "--host", "0.0.0.0", "--port", "30000"]
+        + server_args.split(),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+
+    def stream_logs():
+        for line in proc.stdout:
+            print(f"[server] {line.rstrip()}", flush=True)
+
+    threading.Thread(target=stream_logs, daemon=True).start()
+
+    try:
+        wait_for_server(server_proc=proc)
+
+        # Step 3: Eval
+        print("\n" + "=" * 60)
+        print(f"Step 3: Correctness eval ({num_samples} samples)")
+        print("=" * 60)
+        eval_out, _ = run_streaming([
+            "python3", "/opt/SOAR/eval_model.py",
+            "--api_base", "http://localhost:30000",
+            "--model_path", quant_output,
+            "--data_path", "/opt/SOAR/eval_dataset/perf_public_set.jsonl",
+            "--num_samples", str(num_samples),
+            "--concurrency", "8",
+        ], label="eval")
+
+        # Step 4: Quick benchmark (S1 only for speed)
+        print("\n" + "=" * 60)
+        print("Step 4: Speed benchmark (S1 — single request)")
+        print("=" * 60)
+        bench_data = "/tmp/bench_s1.jsonl"
+        generate_speed_data(bench_data, num_samples=30)
+        bench_out, _ = run_streaming([
+            "bash", "/opt/SOAR/bench_serving.sh",
+            "http://localhost:30000",
+        ], label="bench", env={
+            **os.environ,
+            "SPEED_DATA_S1": bench_data,
+        })
+
+        return {
+            "success": True,
+            "quant_output": quant_output,
+            "eval_log": eval_out[-3000:],
+            "bench_log": bench_out[-3000:],
+        }
+
+    finally:
+        proc.terminate()
+
+
+# ============================================================================
 # Test GPTQ Quantization
 # ============================================================================
 @app.function(
     image=soar_image_with_flash,  # Uses image with flash-attn pre-built
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=14400,  # 4 hours for quantization
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
@@ -1013,7 +1120,7 @@ def test_gptq_quantization(
     group_size: int = 128,
 ):
     """
-    Test W4 quantization on H100.
+    Test W4 quantization on RTX PRO 6000.
 
     This tries multiple quantization methods (llm-compressor, gptqmodel, bitsandbytes)
     and runs a quick eval to verify accuracy.
@@ -1188,15 +1295,15 @@ def test_gptq_quantization(
 # ============================================================================
 @app.function(
     image=soar_image,
-    gpu="H100",
+    gpu="RTX-PRO-6000",
     timeout=14400,  # 4 hours
     volumes={"/models": model_volume, "/workspace": workspace_volume},
 )
 def dev_shell():
-    """Interactive development shell on H100."""
+    """Interactive development shell on RTX PRO 6000."""
     print("""
 ╔══════════════════════════════════════════════════════════════════════╗
-║              SOAR 2026 Development Environment (H100)                ║
+║          SOAR 2026 Development Environment (RTX PRO 6000)            ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  Model:      /models/MiniCPM-SALA                                    ║
 ║  Your code:  /workspace/sglang/sgl-kernel                            ║
@@ -1269,13 +1376,14 @@ DEVELOPMENT:
   modal run modal_app.py --cmd quick         # Quick baseline (~20 min)
 
 OPTIMIZATION:
+  modal run modal_app.py --cmd fp8           # FP8 W8A8 quant + eval (~20min) ← START HERE
   modal run modal_app.py --cmd gptq          # Test GPTQ quantization (1-2hr)
 
 SUBMISSION:
   modal run modal_app.py --cmd package       # Create .tar.gz
 
 INTERACTIVE:
-  modal shell modal_app.py::dev_shell        # H100 shell (4hr)
+  modal shell modal_app.py::dev_shell        # RTX PRO 6000 shell (4hr)
 
 OPTIONS:
   --num-samples N     Limit samples for eval/benchmark
@@ -1368,6 +1476,20 @@ WORKFLOW:
             print(f"  modal volume get soar-workspace /packages ./packages --force")
         else:
             print(f"\n✗ Failed: {result.get('error')}")
+
+    elif cmd == "fp8":
+        print("Testing FP8 W8A8 quantization (per-channel static weights, dynamic activations)...")
+        print("Expected: ~20min quantization + eval\n")
+        result = test_fp8_quantization.remote(num_samples=num_samples or 50)
+        if result.get("success"):
+            print("\n✓ FP8 quantization succeeded")
+            print("\n--- EVAL ---")
+            print(result.get("eval_log", ""))
+            print("\n--- BENCH ---")
+            print(result.get("bench_log", ""))
+        else:
+            print(f"\n✗ Failed: {result.get('error')}")
+            print(result.get("log", ""))
 
     elif cmd == "gptq":
         print("Testing GPTQ W4A16 quantization...")

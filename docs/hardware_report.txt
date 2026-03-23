@@ -1,0 +1,461 @@
+
+======================================================================
+  GPU IDENTITY
+======================================================================
+  Name                                         NVIDIA RTX PRO 6000 Blackwell Server Edition
+  Total VRAM                                   94.97 GB  (101,974,081,536 bytes)
+  CUDA Capability (SM)                         12.0
+  Multiprocessors (SMs)                        188
+  Max threads per SM                           1536
+  Warp size                                    32
+  Registers per SM                             65536
+  Shared mem / block (default)                 49152 bytes  (48 KB)
+  Shared mem / block (opt-in)                  101376 bytes  (99 KB)
+  Shared mem / SM                              102400 bytes  (100 KB)
+  L2 cache size                                128 MB  (134,217,728 bytes)
+
+======================================================================
+  ALL torch.cuda.get_device_properties ATTRIBUTES
+======================================================================
+  L2_cache_size                                    134217728
+  gcnArchName                                      NVIDIA RTX PRO 6000 Blackwell Server Edition
+  is_integrated                                    0
+  is_multi_gpu_board                               0
+  major                                            12
+  max_threads_per_multi_processor                  1536
+  minor                                            0
+  multi_processor_count                            188
+  name                                             NVIDIA RTX PRO 6000 Blackwell Server Edition
+  pci_bus_id                                       146
+  pci_device_id                                    0
+  pci_domain_id                                    0
+  regs_per_multiprocessor                          65536
+  shared_memory_per_block                          49152
+  shared_memory_per_block_optin                    101376
+  shared_memory_per_multiprocessor                 102400
+  total_memory                                     101974081536
+  uuid                                             ce72ebc1-1a30-e2dd-c6fd-90bbab571fe6
+  warp_size                                        32
+
+======================================================================
+  CLOCKS & BANDWIDTH (nvidia-smi)
+======================================================================
+  SM clock  (max / current)                    2430 MHz  /  180 MHz
+  GR clock  (max / current)                    2430 MHz  /  Field "clocks.current.gr" is not a valid field to query. MHz
+  Mem clock (max / current)                    12481 MHz  /  12481 MHz
+  Power limit / draw                           600.00 W  /  35.65 W
+  Temperature (GPU)                            22 C
+  ECC mode                                     Enabled
+  Compute mode                                 Default
+  MIG mode                                     Disabled
+
+======================================================================
+  DERIVED PEAK METRICS
+======================================================================
+  Architecture                                 Blackwell SM12.0
+  CUDA cores/SM  (Blackwell)                   128
+  Total CUDA cores                             24064
+  Peak FP32  (dense)                           116951.0 TFLOPS
+  Peak FP32  (2:4 sparse)                      233902.1 TFLOPS
+  Peak FP16  (tensor core, dense)              233902.1 TFLOPS
+  Peak BF16  (tensor core, dense)              233902.1 TFLOPS
+  Peak FP8   (tensor core, dense)              467804.2 TFLOPS
+  Peak FP8   (2:4 sparse)                      935608.3 TFLOPS
+  Peak INT8  (tensor core, dense)              467804.2 TOPS
+  Mem bandwidth (theoretical)                  2396 GB/s
+  Arith intensity crossover FP32               48804 FLOP/byte
+  Arith intensity crossover FP16 TC            97608 FLOP/byte
+  Max warps / SM                               48  (1536 threads)
+  Max concurrent warps (all SM)                9,024
+
+======================================================================
+  MEMORY SUBSYSTEM
+======================================================================
+  VRAM total                                   94.97 GB
+  VRAM free                                    94.43 GB
+  VRAM used                                    0.55 GB
+
+======================================================================
+  KV CACHE BUDGET (MiniCPM-SALA est: 40 sparse layers, 8 GQA heads, dim=128, fp16)
+======================================================================
+    --mem-fraction-static 0.70                 66.5 GB pool  => ~435,680 tokens KV cache
+    --mem-fraction-static 0.75                 71.2 GB pool  => ~466,800 tokens KV cache
+    --mem-fraction-static 0.80                 76.0 GB pool  => ~497,920 tokens KV cache
+    --mem-fraction-static 0.85                 80.7 GB pool  => ~529,040 tokens KV cache
+    --mem-fraction-static 0.88                 83.6 GB pool  => ~547,712 tokens KV cache
+    --mem-fraction-static 0.90                 85.5 GB pool  => ~560,160 tokens KV cache
+    --mem-fraction-static 0.92                 87.4 GB pool  => ~572,608 tokens KV cache
+    --mem-fraction-static 0.95                 90.2 GB pool  => ~591,280 tokens KV cache
+
+======================================================================
+  CPU & HOST SYSTEM
+======================================================================
+  CPU logical cores                            17
+  CPU physical cores                           17
+  RAM total                                    1024.0 GB
+  RAM available                                1019.6 GB
+  CPU freq (current)                           4000 MHz
+  PCIe H2D bandwidth (pinned, 512MB)           51.7 GB/s
+  PCIe D2H bandwidth (pinned, 512MB)           53.2 GB/s
+
+======================================================================
+  SOFTWARE VERSIONS
+======================================================================
+  Python                                       3.10.19
+  PyTorch                                      2.9.1+cu128
+  CUDA (torch built with)                      12.8
+  cuDNN                                        91002
+  Driver                                       580.95.05
+  nvcc                                         Build cuda_12.9.r12.9/compiler.36037853_0
+  sglang                                       0.0.0.dev0
+  flashinfer                                   0.5.3
+  triton                                       3.5.1
+  tilelang                                     0.1.8
+  xformers                                     [not found]
+  vllm                                         [not found]
+  cutlass                                      installed
+  bitsandbytes                                 [not found]
+  autoawq                                      [not found]
+  gptqmodel                                    [not found]
+
+======================================================================
+  CUDA / HARDWARE FEATURES
+======================================================================
+  TF32 matmul                                  False
+  TF32 cuDNN                                   True
+  BF16 native                                  True
+  Flash SDPA                                   True
+  Math SDPA                                    True
+  Mem-efficient SDPA                           True
+  FP8 (SM >= 8.9)                              True
+  TMA  (SM >= 9.0)                             True
+  Warp specialization (SM >= 9.0)              True
+  Thread block clusters (SM >= 9.0)            True
+  Async copy (SM >= 8.0)                       True
+  LDSM / ldmatrix (SM >= 8.0)                  True
+  Tensor cores (SM >= 7.0)                     True
+  torch.compile available                      True
+  torch.compile backends                       ['cudagraphs', 'inductor', 'openxla', 'tvm']
+  CUDA graphs                                  available
+
+======================================================================
+  FLASHINFER DETAILS
+======================================================================
+  Version                                      0.5.3
+    flashinfer.BatchAttention                  <class 'flashinfer.attention.BatchAttention'>
+    flashinfer.BatchAttentionWithAttentionSinkWrapper <class 'flashinfer.attention.BatchAttentionWithAttentionSinkWrapper'>
+    flashinfer.BatchDecodeMlaWithPagedKVCacheWrapper <class 'flashinfer.decode.BatchDecodeMlaWithPagedKVCacheWrapper'>
+    flashinfer.BatchDecodeWithPagedKVCacheWrapper <class 'flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper'>
+    flashinfer.BatchDecodeWithSharedPrefixPagedKVCacheWrapper <class 'flashinfer.cascade.BatchDecodeWithSharedPrefixPagedKVCacheWrapper'>
+    flashinfer.BatchMLAPagedAttentionWrapper   <class 'flashinfer.mla.BatchMLAPagedAttentionWrapper'>
+    flashinfer.BatchPODWithPagedKVCacheWrapper <class 'flashinfer.pod.BatchPODWithPagedKVCacheWrapper'>
+    flashinfer.BatchPrefillWithPagedKVCacheWrapper <class 'flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper'>
+    flashinfer.BatchPrefillWithRaggedKVCacheWrapper <class 'flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper'>
+    flashinfer.BatchPrefillWithSharedPrefixPagedKVCacheWrapper <class 'flashinfer.cascade.BatchPrefillWithSharedPrefixPagedKVCacheWrapper'>
+    flashinfer.BlockSparseAttentionWrapper     <class 'flashinfer.sparse.BlockSparseAttentionWrapper'>
+    flashinfer.CUDAGraphBatchDecodeWithPagedKVCacheWrapper <class 'flashinfer.decode.CUDAGraphBatchDecodeWithPagedKVCacheWrapper'>
+    flashinfer.GatedActType                    <enum 'GatedActType'>
+    flashinfer.MultiLevelCascadeAttentionWrapper <class 'flashinfer.cascade.MultiLevelCascadeAttentionWrapper'>
+    flashinfer.PODWithPagedKVCacheWrapper      <class 'flashinfer.pod.PODWithPagedKVCacheWrapper'>
+    flashinfer.RoutingMethodType               <enum 'RoutingMethodType'>
+    flashinfer.SegmentGEMMWrapper              <class 'flashinfer.gemm.gemm_base.SegmentGEMMWrapper'>
+    flashinfer.SfLayout                        <enum 'SfLayout'>
+    flashinfer.VariableBlockSparseAttentionWrapper <class 'flashinfer.sparse.VariableBlockSparseAttentionWrapper'>
+    flashinfer.append_paged_kv_cache           <function append_paged_kv_cache at 0x2b0335c62dd0>
+    flashinfer.append_paged_mla_kv_cache       <function append_paged_mla_kv_cache at 0x2b0335c62d40>
+    flashinfer.apply_llama31_rope              <function apply_llama31_rope at 0x2b0335d28dc0>
+    flashinfer.apply_llama31_rope_inplace      <function apply_llama31_rope_inplace at 0x2b0335d28b80>
+    flashinfer.apply_llama31_rope_pos_ids      <function apply_llama31_rope_pos_ids at 0x2b0335d28e50>
+    flashinfer.apply_llama31_rope_pos_ids_inplace <function apply_llama31_rope_pos_ids_inplace at 0x2b0335d28c10>
+    flashinfer.apply_rope                      <function apply_rope at 0x2b0335d28ca0>
+    flashinfer.apply_rope_inplace              <function apply_rope_inplace at 0x2b0335d281f0>
+    flashinfer.apply_rope_pos_ids              <function apply_rope_pos_ids at 0x2b0335d28d30>
+    flashinfer.apply_rope_pos_ids_inplace      <function apply_rope_pos_ids_inplace at 0x2b0335d28af0>
+    flashinfer.apply_rope_with_cos_sin_cache   <function apply_rope_with_cos_sin_cache at 0x2b0335d28ee0>
+    flashinfer.apply_rope_with_cos_sin_cache_inplace <function apply_rope_with_cos_sin_cache_inplace at 0x2b0335d28f70>
+    flashinfer.autotune                        <function autotune at 0x2b0335c528c0>
+    flashinfer.block_scale_interleave          <function block_scale_interleave at 0x2b0335bdb0a0>
+    flashinfer.bmm_fp8                         <function bmm_fp8 at 0x2b0335d25900>
+    flashinfer.chain_speculative_sampling      <function chain_speculative_sampling at 0x2b0335d2a050>
+    flashinfer.cudnn_batch_decode_with_kv_cache <function cudnn_batch_decode_with_kv_cache at 0x2b0335c62440>
+    flashinfer.cutlass_fused_moe               <function cutlass_fused_moe at 0x2b0335cc49d0>
+    flashinfer.e2m1_and_ufp8sf_scale_to_float  <function e2m1_and_ufp8sf_scale_to_float at 0x2b0335bdb130>
+    flashinfer.fast_decode_plan                <function fast_decode_plan at 0x2b0335bf64d0>
+    flashinfer.fp4_quantize                    <function fp4_quantize at 0x2b0335bdaf80>
+    flashinfer.fused_add_rmsnorm               <function fused_add_rmsnorm at 0x2b0335d26f80>
+    flashinfer.gelu_and_mul                    <function gelu_and_mul at 0x2b0335bdb880>
+    flashinfer.gelu_tanh_and_mul               <function gelu_tanh_and_mul at 0x2b0335bdb7f0>
+    flashinfer.gemma_fused_add_rmsnorm         <function gemma_fused_add_rmsnorm at 0x2b0335d27250>
+    flashinfer.gemma_rmsnorm                   <function gemma_rmsnorm at 0x2b0335d26dd0>
+    flashinfer.get_batch_indices_positions     <function get_batch_indices_positions at 0x2b0335c62a70>
+    flashinfer.get_seq_lens                    <function get_seq_lens at 0x2b0335c62cb0>
+    flashinfer.layernorm                       <function layernorm at 0x2b0335d27370>
+    flashinfer.merge_state                     <function merge_state at 0x2b0335bf6710>
+    flashinfer.merge_state_in_place            <function merge_state_in_place at 0x2b0335bf6830>
+    flashinfer.merge_states                    <function merge_states at 0x2b0335bf6950>
+    flashinfer.min_p_sampling_from_probs       <function min_p_sampling_from_probs at 0x2b0335d29cf0>
+    flashinfer.mm_fp4                          <function mm_fp4 at 0x2b0335d24f70>
+    flashinfer.mm_fp8                          <function mm_fp8 at 0x2b0335d245e0>
+    flashinfer.mxfp4_dequantize                <function mxfp4_dequantize at 0x2b0335bdb400>
+    flashinfer.mxfp4_dequantize_host           <function mxfp4_dequantize_host at 0x2b0335bdb490>
+    flashinfer.mxfp4_quantize                  <function mxfp4_quantize at 0x2b0335bdb370>
+    flashinfer.mxfp8_dequantize_host           <function mxfp8_dequantize_host at 0x2b0335bf7520>
+    flashinfer.mxfp8_quantize                  <function mxfp8_quantize at 0x2b0335bf7400>
+    flashinfer.next_positive_power_of_2        <function next_positive_power_of_2 at 0x2b0335bd8790>
+    flashinfer.nvfp4_batched_quantize          <function nvfp4_batched_quantize at 0x2b0335bdb520>
+    flashinfer.nvfp4_block_scale_interleave    <function block_scale_interleave at 0x2b0335bdb0a0>
+    flashinfer.nvfp4_quantize                  <function nvfp4_quantize at 0x2b0335bdb2e0>
+    flashinfer.packbits                        <function packbits at 0x2b0335c62f80>
+    flashinfer.prepare_low_latency_gemm_weights <function prepare_low_latency_gemm_weights at 0x2b0335cc6b00>
+    flashinfer.reorder_rows_for_gated_act_gemm <function reorder_rows_for_gated_act_gemm at 0x2b0335cc4820>
+    flashinfer.rmsnorm                         <function rmsnorm at 0x2b0335d26cb0>
+    flashinfer.sampling_from_logits            <function sampling_from_logits at 0x2b0335d29ab0>
+    flashinfer.sampling_from_probs             <function sampling_from_probs at 0x2b0335d29b40>
+    flashinfer.scaled_fp4_grouped_quantize     <function scaled_fp4_grouped_quantize at 0x2b0335bdb5b0>
+    flashinfer.segment_packbits                <function segment_packbits at 0x2b0335c631c0>
+    flashinfer.shuffle_matrix_a                <function shuffle_matrix_a at 0x2b0335bdb1c0>
+    flashinfer.shuffle_matrix_sf_a             <function shuffle_matrix_sf_a at 0x2b0335bdb250>
+    flashinfer.silu_and_mul                    <function silu_and_mul at 0x2b0335bdb760>
+    flashinfer.silu_and_mul_scaled_nvfp4_experts_quantize <function silu_and_mul_scaled_nvfp4_experts_quantize at 0x2b0335bdb910>
+    flashinfer.single_decode_with_kv_cache     <function single_decode_with_kv_cache at 0x2b0335bf5510>
+    flashinfer.single_prefill_with_kv_cache    <function single_prefill_with_kv_cache at 0x2b0335c63ac0>
+    flashinfer.single_prefill_with_kv_cache_return_lse functools.partial(<function single_prefill_with_kv_cache at 0x2b0335c63ac0>, ret
+    flashinfer.softmax                         <function softmax at 0x2b0335d29a20>
+    flashinfer.tgv_gemm_sm100                  <function tgv_gemm_sm100 at 0x2b0335cc7640>
+    flashinfer.top_k_mask_logits               <function top_k_mask_logits at 0x2b0335d29fc0>
+    flashinfer.top_k_renorm_probs              <function top_k_renorm_probs at 0x2b0335d29f30>
+    flashinfer.top_k_sampling_from_probs       <function top_k_sampling_from_probs at 0x2b0335d29c60>
+    flashinfer.top_k_top_p_sampling_from_logits <function top_k_top_p_sampling_from_logits at 0x2b0335d29d80>
+    flashinfer.top_k_top_p_sampling_from_probs <function top_k_top_p_sampling_from_probs at 0x2b0335d29e10>
+    flashinfer.top_p_renorm_probs              <function top_p_renorm_probs at 0x2b0335d29ea0>
+    flashinfer.top_p_sampling_from_probs       <function top_p_sampling_from_probs at 0x2b0335d29bd0>
+    flashinfer.trtllm_fp4_block_scale_moe      <function trtllm_fp4_block_scale_moe at 0x2b0335cc4dc0>
+    flashinfer.trtllm_fp4_block_scale_routed_moe <function trtllm_fp4_block_scale_routed_moe at 0x2b0335cc4e50>
+    flashinfer.trtllm_fp8_block_scale_moe      <function trtllm_fp8_block_scale_moe at 0x2b0335cc4d30>
+    flashinfer.trtllm_fp8_per_tensor_scale_moe <function trtllm_fp8_per_tensor_scale_moe at 0x2b0335cc4ca0>
+    flashinfer.xqa                             <function xqa at 0x2b0335bf4d30>
+    flashinfer.xqa_mla                         <function xqa_mla at 0x2b0335bf4ee0>
+
+======================================================================
+  TRITON DETAILS
+======================================================================
+  Version                                      3.5.1
+  Backends                                     ['Backend', 'BaseBackend', 'DriverBase', 'ModuleType', 'T', 'Type', 'TypeVar', 'Union', '__annotations__', '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__spec__', '_discover_backends', '_find_concrete_subclasses', 'amd', 'backends', 'compiler', 'dataclass', 'driver', 'entry_points', 'importlib', 'inspect', 'nvidia', 'sys']
+  CUDA runtime                                 GPUTarget(backend='cuda', arch=120, warp_size=32)
+
+======================================================================
+  TILELANG DETAILS
+======================================================================
+  Version                                      0.1.8
+    tilelang.PassConfigKey                     <enum 'PassConfigKey'>
+  PassConfigKeys                               ['CUDA_KERNELS_OUTPUT_DIR', 'TIR_ADD_LOWER_PASS', 'TIR_DISABLE_CSE', 'TIR_DISABLE_STORAGE_REWRITE', 'TIR_DISABLE_VECTORIZE', 'TIR_ENABLE_DEBUG', 'TIR_ENABLE_EQUIV_TERMS_IN_CSE', 'TIR_MERGE_STATIC_SMEM', 'TIR_NOALIAS', 'TIR_SIMPLIFY', 'TIR_USE_ASYNC_COPY', 'TL_AST_PRINT_ENABLE', 'TL_CONFIG_INDEX_BITWIDTH', 'TL_DEBUG_MERGE_SHARED_MEMORY_ALLOCATIONS', 'TL_DEVICE_COMPILE_FLAGS', 'TL_DISABLE_DATA_RACE_CHECK', 'TL_DISABLE_LOOP_UNSWITCHING', 'TL_DISABLE_OUT_OF_BOUND_WARNING', 'TL_DISABLE_SAFE_MEMORY_ACCESS', 'TL_DISABLE_SHUFFLE_ELECT', 'TL_DISABLE_THREAD_STORAGE_SYNC', 'TL_DISABLE_TMA_LOWER', 'TL_DISABLE_VECTORIZE_256', 'TL_DISABLE_WARP_SPECIALIZED', 'TL_DISABLE_WGMMA', 'TL_ENABLE_AGGRESSIVE_SHARED_MEMORY_MERGE', 'TL_ENABLE_FAST_MATH', 'TL_ENABLE_LOWER_LDGSTG', 'TL_ENABLE_LOWER_LDGSTG_PREDICATED', 'TL_ENABLE_PTXAS_VERBOSE_OUTPUT', 'TL_ENABLE_VECTORIZE_PLANNER_VERBOSE', 'TL_FORCE_LET_INLINE', 'TL_LAYOUT_VISUALIZATION_ENABLE', 'TL_LAYOUT_VISUALIZATION_FORMATS', 'TL_LOOP_UNSWITCHING_ALLOW_NON_TRIVIAL_ELSE', 'TL_PTXAS_REGISTER_USAGE_LEVEL', 'TL_SIMPLIFY', 'TL_SIMPLIFY_APPLY_CONSTRAINTS_TO_BOOLEAN_BRANCHES', 'TL_SIMPLIFY_CONVERT_BOOLEAN_TO_AND_OF_ORS', 'TL_SIMPLIFY_ENABLE_LET_INLINE', 'TL_SIMPLIFY_PROPAGATE_KNOWNS_TO_PROVE_CONDITIONAL', 'TL_SIMPLIFY_PROPAGATE_KNOWNS_TO_SIMPLIFY_EXPRESSIONS', 'TL_SIMPLIFY_TRANSITIVELY_PROVE_INEQUALITIES', 'TL_STORAGE_REWRITE_DETECT_INPLACE']
+
+======================================================================
+  SHARED MEMORY BANDWIDTH (Triton kernel)
+======================================================================
+  Triton smem kernel (sanity)                  0.0109 ms  (warmup ok = triton compiles SM12)
+
+======================================================================
+  MEMORY BANDWIDTH vs BUFFER SIZE
+======================================================================
+        1 MB buffer                                 321 GB/s   (0.0061 ms)
+        4 MB buffer                                1134 GB/s   (0.0069 ms)
+       16 MB buffer                                3616 GB/s   (0.0086 ms)
+       64 MB buffer                                4500 GB/s   (0.0278 ms)
+      256 MB buffer                                1361 GB/s   (0.3674 ms)
+      512 MB buffer                                1359 GB/s   (0.7361 ms)
+     1024 MB buffer                                1360 GB/s   (1.4706 ms)
+     4096 MB buffer                                1359 GB/s   (5.8848 ms)
+
+======================================================================
+  GEMM BENCHMARKS (inference-relevant shapes, FP16)
+======================================================================
+    decode  M=1   (single token, hidden=4096)  0.0541 ms     0.6 TFLOPS
+    decode  M=1   (ffn gate,  hidden->intermediate) 0.0721 ms     1.6 TFLOPS
+    decode  M=1   (ffn down,  intermediate->hidden) 0.0701 ms     1.7 TFLOPS
+    decode  M=8   (batch=8)                    0.0168 ms    16.0 TFLOPS
+    decode  M=16  (batch=16)                   0.0168 ms    32.1 TFLOPS
+    decode  M=32  (batch=32)                   0.0155 ms    69.3 TFLOPS
+    prefill M=128                              0.0249 ms   172.3 TFLOPS
+    prefill M=512                              0.0646 ms   266.0 TFLOPS
+    prefill M=2048                             0.2118 ms   324.4 TFLOPS
+    prefill M=4096 (square)                    0.4720 ms   291.2 TFLOPS
+    prefill M=4096 (ffn gate)                  1.6737 ms   287.4 TFLOPS
+
+======================================================================
+  GEMM BENCHMARKS (BF16)
+======================================================================
+    decode M=1                                 0.0529 ms     0.6 TFLOPS
+    prefill M=2048                             0.2464 ms   278.9 TFLOPS
+    square                                     0.3656 ms   375.9 TFLOPS
+
+======================================================================
+  GEMM BENCHMARKS (FP8 e4m3 — Blackwell native)
+======================================================================
+    decode M=1                                 0.0156 ms     2.2 TFLOPS
+    prefill M=2048                             0.0994 ms   691.4 TFLOPS
+    square                                     0.2003 ms   686.3 TFLOPS
+
+======================================================================
+  ATTENTION BENCHMARKS (torch SDPA)
+======================================================================
+    bs=1  heads=32 seq=512   dim=128           0.0360 ms  119.29 TFLOPS
+    bs=1  heads=32 seq=4K    dim=128           0.5541 ms  496.08 TFLOPS
+    bs=1  heads=32 seq=16K   dim=128           7.0724 ms  621.86 TFLOPS
+    bs=1  heads=32 seq=32K   dim=128           25.9002 ms  679.23 TFLOPS
+    bs=8  heads=32 seq=512   dim=128           0.0972 ms  353.58 TFLOPS
+    bs=8  heads=32 seq=4K    dim=128           3.4591 ms  635.71 TFLOPS
+
+======================================================================
+  ELEMENTWISE / REDUCTION OPS (memory-bound)
+======================================================================
+    Softmax     [4096x4096] FP16               0.0517 ms
+    RMSNorm     [4096x4096] FP16               0.0558 ms
+    SiLU        [4096x4096] FP16               0.0134 ms
+    GELU        [4096x4096] FP16               0.0149 ms
+    Elementwise add [4096x4096]                0.0127 ms
+    Elementwise mul [4096x4096]                0.0128 ms
+    Sum reduce  [4096x4096] dim=-1             0.0106 ms
+    Max reduce  [4096x4096] dim=-1             0.0169 ms
+    Topk k=64   [4096x4096] dim=-1             0.1397 ms
+    Sort        [4096x4096] dim=-1             0.3902 ms
+    Gather      [2M] FP16                      0.0326 ms
+    LayerNorm   [2048x4096] FP16               0.0145 ms
+
+======================================================================
+  KERNEL LAUNCH OVERHEAD
+======================================================================
+  Single kernel launch overhead                0.00501 ms  (5.01 us)
+  10 chained launches                          0.04955 ms  (4.95 us avg)
+  10 ops via CUDA graph replay                 0.01230 ms  (vs 0.04955 ms eager)
+    CUDA graph speedup (10 ops)                4.0x
+
+======================================================================
+  OCCUPANCY ESTIMATES (for common kernel configs)
+======================================================================
+    Triton block=  64, smem, 1504 blocks       0.0118 ms
+    Triton block= 128, smem, 1504 blocks       0.0144 ms
+    Triton block= 256, smem, 1504 blocks       0.0140 ms
+    Triton block= 512, smem, 1504 blocks       0.0141 ms
+    Triton block=1024, smem, 1504 blocks       0.0113 ms
+
+======================================================================
+  WARP-LEVEL PRIMITIVES (Triton)
+======================================================================
+  Warp reduce (sum, BLOCK=32)                  0.0168 ms  (SM12 warp shuffle ok)
+
+======================================================================
+  SPARSE & TOPK OPS (MiniCPM-SALA specific)
+======================================================================
+    topk k=64  from N=4K  (pool output)        0.0228 ms  (batch=32)
+    topk k=128 from N=4K                       0.0228 ms  (batch=32)
+    topk k=64  from N=16K                      0.0550 ms  (batch=32)
+    topk k=128 from N=16K                      0.0553 ms  (batch=32)
+    topk k=64  from N=64K (128K seqlen / block64) 0.0576 ms  (batch=32)
+    topk k=128 from N=64K                      0.0579 ms  (batch=32)
+    index_select seq=4096    topk=64           0.0079 ms
+    index_select seq=32768   topk=128          0.0075 ms
+    index_select seq=131072  topk=128          0.0075 ms
+
+======================================================================
+  QUANTIZATION SUPPORT
+======================================================================
+  FP8 e4m3 dtype available                     True
+  FP8 e5m2 dtype available                     True
+  INT8 quantization                            Yes (SM >= 6.1)
+  INT4 (custom kernels)                        Yes via bitsandbytes / GPTQ / AWQ
+  FP8 e4m3 cast [4096x4096] FP16->FP8          0.0126 ms
+  FP8 e4m3 cast [4096x4096] FP8->FP16          0.0330 ms
+
+======================================================================
+  ASYNC & PIPELINE FEATURES
+======================================================================
+  Dual-stream 2x GEMM[1K]                      0.0582 ms  vs sequential 0.0251 ms
+  Async H2D copy non_blocking (64MB)           1.2092 ms
+
+======================================================================
+  NVIDIA-SMI FULL
+======================================================================
+  Mon Mar 23 11:34:12 2026       
+  +-----------------------------------------------------------------------------------------+
+  | NVIDIA-SMI 580.95.05              Driver Version: 580.95.05      CUDA Version: 13.0     |
+  +-----------------------------------------+------------------------+----------------------+
+  | GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+  | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+  |                                         |                        |               MIG M. |
+  |=========================================+========================+======================|
+  |   0  NVIDIA RTX PRO 6000 Blac...    On  |   00000000:92:00.0 Off |                    0 |
+  | N/A   28C    P0             91W /  600W |    1285MiB /  97887MiB |     18%      Default |
+  |                                         |                        |             Disabled |
+  +-----------------------------------------+------------------------+----------------------+
+  
+  +-----------------------------------------------------------------------------------------+
+  | Processes:                                                                              |
+  |  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+  |        ID   ID                                                               Usage      |
+  |=========================================================================================|
+  |    0   N/A  N/A               1      C   /bin/dumb-init                         1276MiB |
+  +-----------------------------------------------------------------------------------------+
+
+======================================================================
+  NVIDIA-SMI DETAILED QUERY
+======================================================================
+    name                                       NVIDIA RTX PRO 6000 Blackwell Server Edition
+    driver_version                             580.95.05
+    compute_cap                                12.0
+    pci.bus_id                                 [Unknown Error]
+    memory.total [MiB]                         97887 MiB
+    memory.free [MiB]                          95966 MiB
+    memory.used [MiB]                          1285 MiB
+    clocks.max.sm [MHz]                        2430 MHz
+    clocks.max.memory [MHz]                    12481 MHz
+    clocks.max.graphics [MHz]                  2430 MHz
+    clocks.current.sm [MHz]                    2332 MHz
+    clocks.current.memory [MHz]                12481 MHz
+    clocks.applications.graphics [MHz]         2430 MHz
+    clocks.applications.memory [MHz]           12481 MHz
+    power.limit [W]                            600.00 W
+    power.draw [W]                             87.14 W
+    power.default_limit [W]                    600.00 W
+    power.max_limit [W]                        600.00 W
+    temperature.gpu                            27
+    temperature.memory                         N/A
+    fan.speed [%]                              [N/A]
+    utilization.gpu [%]                        18 %
+    utilization.memory [%]                     0 %
+    ecc.mode.current                           Enabled
+    mig.mode.current                           Disabled
+    pcie.link.gen.current                      5
+    pcie.link.width.current                    16
+    pcie.link.gen.max                          5
+    pcie.link.width.max                        16
+
+======================================================================
+  PCIE DETAILS
+======================================================================
+    pcie.link.gen.current                      5
+    pcie.link.width.current                    16
+    pcie.link.gen.max                          5
+    pcie.link.width.width.max                  Field "pcie.link.width.width.max" is not a valid field to query.
+
+======================================================================
+  OPTIMIZATION CHEATSHEET (Blackwell SM12.0 — RTX PRO 6000)
+======================================================================
+    VRAM                                       95 GB — fit model + large KV cache easily
+    mem-fraction-static                        Try 0.85-0.90 (huge VRAM vs H100 80GB)
+    chunked-prefill-size                       Try 32768 or 65536 (more VRAM = bigger chunks OK)
+    dtype recommendation                       FP8 e4m3 for weights+activations (Blackwell-native, 2x FP16 TC throughput)
+    Sparse 2:4                                 Enabled on Blackwell (2x compute for eligible weight mats)
+    TMA                                        Available SM>=9.0 — currently DISABLED in tilelang, consider enabling
+    Warp specialization                        Available SM>=9.0 — producer/consumer warp pattern (async prefetch)
+    Thread block clusters                      Available SM>=9.0 — distributed shared mem across SM cluster
+    Shared mem / SM                            100 KB  |  opt-in per block: 99 KB
+    Max warps / SM                             48  =>  up to 9,024 concurrent warps
+    L2 cache                                   128 MB — cache reuse key for decode
+    PCIe                                       Check gen/width above — affects CPU<->GPU KV offload speed
+    FP8 GEMM tile                              16x16x32 (2x FP16 tile capacity)
+    Kernel launch                              ~few us overhead — batch small ops or use CUDA graphs
+    Triton SM12 support                        SM12.0 — verify triton>=3.5 compiles correctly (see above)
+    tilelang TMA flag                          TL_DISABLE_TMA_LOWER=True currently — flip to False and test
+    Memory BW (theoretical)                    2396 GB/s (GDDR7 384-bit)  vs measured: see section 9
+    Arith intensity                            FP16 TC crossover ~97607 FLOP/byte
