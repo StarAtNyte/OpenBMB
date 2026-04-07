@@ -689,13 +689,19 @@ class ModelConfig:
         quant_algo = json_quant_configs.get("quant_algo", None)
 
         if quant_algo == "MIXED_PRECISION":
-            return {"quant_method": "w4afp8"}
+            result = {"quant_method": "w4afp8"}
         elif quant_algo and ("FP4" in quant_algo or "NVFP4" in quant_algo):
-            return {"quant_method": "modelopt_fp4"}
+            result = {"quant_method": "modelopt_fp4"}
         elif quant_algo and "FP8" in quant_algo:
-            return {"quant_method": "modelopt_fp8"}
+            result = {"quant_method": "modelopt_fp8"}
         else:
             return None
+
+        # Preserve scale_fmt so DeepGemm ue8m0 check works correctly
+        scale_fmt = json_quant_configs.get("scale_fmt", None)
+        if scale_fmt is not None:
+            result["scale_fmt"] = scale_fmt
+        return result
 
     def _is_already_quantized(self) -> bool:
         """Check if the model is already quantized based on config files."""

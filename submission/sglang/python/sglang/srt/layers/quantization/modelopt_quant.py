@@ -1023,6 +1023,13 @@ class ModelOptFp4Config(ModelOptQuantConfig):
     def is_layer_excluded(self, prefix: str):
         import regex as re
 
+        # Log the first few prefixes seen so we can verify the format
+        if not hasattr(ModelOptFp4Config, '_logged_prefixes'):
+            ModelOptFp4Config._logged_prefixes = set()
+        if len(ModelOptFp4Config._logged_prefixes) < 10:
+            ModelOptFp4Config._logged_prefixes.add(prefix)
+            logger.warning(f"[fp4_excl] checking prefix={prefix!r} against {len(self.exclude_modules)} patterns")
+
         fused_patterns = ["q_a_proj", "q_b_proj", "kv_a_proj_with_mqa", "kv_b_proj"]
         prefix_split = prefix.split(".")
         for pattern in self.exclude_modules:
@@ -1030,13 +1037,15 @@ class ModelOptFp4Config(ModelOptQuantConfig):
             pattern_split = pattern.split(".")
             if re.fullmatch(regex_str, prefix):
                 return True
+            # Also try matching with language_model. prefix stripped
+            if prefix.startswith("language_model."):
+                short = prefix[len("language_model."):]
+                if re.fullmatch(regex_str, short):
+                    return True
             elif (
                 pattern_split[-1] in fused_patterns
                 and pattern_split[-1] in prefix_split[-1]
             ):
-                # Check if the last part of the excluded pattern is contained in the last part of the prefix
-                # This handles fused modules like fused_qkv_a_proj_with_mqa that contain q_a_proj and kv_a_proj_with_mqa
-                # e.g., model.layers.{i}.self_attn.{fused_weight_name}
                 assert len(prefix_split) == 5 and len(pattern_split) == 5
                 return True
         return False
@@ -1087,6 +1096,18 @@ class ModelOptFp4LinearMethod(LinearMethodBase):
 
         output_size_per_partition = sum(output_partition_sizes)
         weight_loader = extra_weight_attrs.get("weight_loader")
+
+        # Log the first 5 layer prefixes to see what SGLang calls them
+        prefix = extra_weight_attrs.get("prefix", "<unknown>")
+        if not hasattr(ModelOptFp4LinearMethod, '_create_prefixes'):
+            ModelOptFp4LinearMethod._create_prefixes = []
+        if len(ModelOptFp4LinearMethod._create_prefixes) < 5:
+            ModelOptFp4LinearMethod._create_prefixes.append(prefix)
+            logger.warning(
+                f"[fp4_create] layer prefix={prefix!r} "
+                f"in={input_size_per_partition} out={output_size_per_partition} "
+                f"partitions={output_partition_sizes}"
+            )
 
         layer.logical_widths = output_partition_sizes
 
@@ -1143,7 +1164,55 @@ class ModelOptFp4LinearMethod(LinearMethodBase):
         layer.register_parameter("weight_scale", weight_scale)
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        # ── per-layer diagnostics ──────────────────────────────────────────
+        if not hasattr(ModelOptFp4LinearMethod, '_diag_layers'):
+            ModelOptFp4LinearMethod._diag_layers = []
+            ModelOptFp4LinearMethod._diag_zero_input_scale = 0
+            ModelOptFp4LinearMethod._diag_nonzero_input_scale = 0
+            ModelOptFp4LinearMethod._diag_zero_weight_scale_2 = 0
+
+        sc = layer.weight_scale.data
+        raw_input_scale = layer.input_scale.data
+        raw_ws2 = layer.weight_scale_2.data
+
+        # Track zero vs non-zero input_scales to detect loading failures
+        if raw_input_scale.max().item() == 0.0:
+            ModelOptFp4LinearMethod._diag_zero_input_scale += 1
+        else:
+            ModelOptFp4LinearMethod._diag_nonzero_input_scale += 1
+        if raw_ws2.max().item() == 0.0:
+            ModelOptFp4LinearMethod._diag_zero_weight_scale_2 += 1
+
+        # Log first 3 layers in full detail
+        n_logged = len(ModelOptFp4LinearMethod._diag_layers)
+        if n_logged < 3:
+            ModelOptFp4LinearMethod._diag_layers.append({
+                'weight_shape': list(layer.weight.shape),
+                'weight_dtype': str(layer.weight.dtype),
+                'weight_scale_shape': list(sc.shape),
+                'weight_scale_dtype': str(sc.dtype),
+                'weight_scale_bytes4': sc.cpu().reshape(-1)[:4].view(torch.uint8).tolist(),
+                'weight_scale_float4': sc.cpu().reshape(-1)[:4].float().tolist(),
+                'input_scale_raw': raw_input_scale.tolist(),
+                'weight_scale_2_raw': raw_ws2.tolist(),
+            })
+            logger.warning(
+                f"[fp4_diag] layer[{n_logged}]: "
+                f"weight={layer.weight.shape}/{layer.weight.dtype} "
+                f"ws_shape={sc.shape} ws_dtype={sc.dtype} "
+                f"ws_bytes4={sc.cpu().reshape(-1)[:4].view(torch.uint8).tolist()} "
+                f"ws_float4={sc.cpu().reshape(-1)[:4].float().tolist()} "
+                f"input_scale_raw={raw_input_scale.tolist()} "
+                f"weight_scale_2_raw={raw_ws2.tolist()}"
+            )
+        # ── end per-layer diagnostics ──────────────────────────────────────
+
         input_scale_2 = layer.input_scale.max().to(torch.float32)
+        # input_scale is injected into the safetensors by preprocess_model_nvfp4_modelopt.py.
+        # If missing (old checkpoint or export didn't find amaxes), default to 1.0.
+        input_scale_was_zero = (input_scale_2.item() == 0.0)
+        if input_scale_was_zero:
+            input_scale_2 = torch.ones(1, dtype=torch.float32, device=input_scale_2.device).squeeze()
         weight_scale_2 = layer.weight_scale_2.max().to(torch.float32)
         layer.input_scale = Parameter(input_scale_2, requires_grad=False)
         layer.weight_scale_2 = Parameter(weight_scale_2, requires_grad=False)
@@ -1153,6 +1222,31 @@ class ModelOptFp4LinearMethod(LinearMethodBase):
         layer.input_scale_inv = Parameter(
             (1 / input_scale_2).to(torch.float32), requires_grad=False
         )
+        if not hasattr(ModelOptFp4LinearMethod, '_logged_alpha'):
+            ModelOptFp4LinearMethod._logged_alpha = True
+            logger.warning(
+                f"[fp4_diag] first layer final: "
+                f"input_scale_was_zero={input_scale_was_zero} "
+                f"input_scale={input_scale_2.item():.6f} "
+                f"weight_scale_2={weight_scale_2.item():.6f} "
+                f"alpha={layer.alpha.item():.6f} "
+                f"input_scale_inv={layer.input_scale_inv.item():.6f}"
+            )
+        # After all layers: emit summary (keyed on a counter)
+        if not hasattr(ModelOptFp4LinearMethod, '_diag_summary_logged'):
+            ModelOptFp4LinearMethod._diag_summary_logged = False
+            ModelOptFp4LinearMethod._diag_call_count = 0
+        ModelOptFp4LinearMethod._diag_call_count = getattr(
+            ModelOptFp4LinearMethod, '_diag_call_count', 0) + 1
+        # Log summary after ~256 layers (one full model pass)
+        if ModelOptFp4LinearMethod._diag_call_count == 256 and not ModelOptFp4LinearMethod._diag_summary_logged:
+            ModelOptFp4LinearMethod._diag_summary_logged = True
+            logger.warning(
+                f"[fp4_diag] SUMMARY after 256 layers: "
+                f"zero_input_scale={ModelOptFp4LinearMethod._diag_zero_input_scale} "
+                f"nonzero_input_scale={ModelOptFp4LinearMethod._diag_nonzero_input_scale} "
+                f"zero_weight_scale_2={ModelOptFp4LinearMethod._diag_zero_weight_scale_2}"
+            )
         if FLASHINFER_FP4_GEMM_BACKEND == "trtllm":
             # FlashInfer TRTLLM FP4 GEMM requires a different weight layout.
             # FlashInfer provides nvfp4_quantize to quantize + shuffle the
@@ -1238,6 +1332,21 @@ class ModelOptFp4LinearMethod(LinearMethodBase):
         )
         if bias is not None:
             out = out + bias
+
+        # Forward pass diagnostics: log first few calls to catch NaN/zero outputs
+        if not hasattr(ModelOptFp4LinearMethod, '_fwd_calls'):
+            ModelOptFp4LinearMethod._fwd_calls = 0
+        ModelOptFp4LinearMethod._fwd_calls += 1
+        if ModelOptFp4LinearMethod._fwd_calls <= 5:
+            out_f = out.float()
+            logger.warning(
+                f"[fp4_fwd] call={ModelOptFp4LinearMethod._fwd_calls} "
+                f"x={x.shape}/{x.dtype} x_abs_max={x.float().abs().max().item():.4f} "
+                f"out={out.shape}/{out.dtype} out_abs_max={out_f.abs().max().item():.4f} "
+                f"out_mean={out_f.mean().item():.4f} out_nan={out_f.isnan().any().item()} "
+                f"alpha={layer.alpha.item():.6f} input_scale_inv={layer.input_scale_inv.item():.6f}"
+            )
+
         return out.view(*output_shape)
 
 

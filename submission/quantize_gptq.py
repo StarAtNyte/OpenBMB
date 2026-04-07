@@ -102,7 +102,7 @@ def main():
         "desc_act": False,
         "sym": False,
     }
-    config["torch_dtype"] = "float16"
+    config["torch_dtype"] = "bfloat16"
     with open(dst / "config.json", "w") as f:
         json.dump(config, f, indent=2)
 

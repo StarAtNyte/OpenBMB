@@ -27,6 +27,39 @@ logger = logging.getLogger(__name__)
 _is_cpu = is_cpu()
 
 
+_fp4_bf16_stash: dict = {}
+
+
+def _maybe_pack_fp4(param_data: torch.Tensor, loaded_weight: torch.Tensor) -> torch.Tensor:
+    if param_data.shape == loaded_weight.shape:
+        return loaded_weight
+
+    loaded_bytes = loaded_weight.numel() * loaded_weight.element_size()
+    param_bytes = param_data.numel() * param_data.element_size()
+
+    if loaded_bytes == param_bytes:
+        # Same byte count but different dtype/shape — reinterpret the bytes.
+        # Handles e.g. BF16 [out, in] checkpoint → uint8 [out, in//2] param.
+        return loaded_weight.contiguous().view(torch.uint8).view(param_data.dtype).reshape(param_data.shape)
+
+    # Loaded weight has 2x the bytes of param.
+    # This happens when the checkpoint stores 1 FP4 nibble per uint8 byte (unpacked),
+    # but SGLang allocates uint8 [out, in//2] expecting 2 nibbles per byte (packed).
+    # Pack pairs of consecutive uint8 values: byte[i] = low4(src[2i]) | (low4(src[2i+1]) << 4)
+    if loaded_bytes == param_bytes * 2 and param_data.dtype == torch.uint8:
+        src = loaded_weight.contiguous().view(torch.uint8).reshape(-1)
+        lo = src[0::2] & 0x0F          # low nibble of even bytes
+        hi = (src[1::2] & 0x0F) << 4   # low nibble of odd bytes → high nibble
+        repacked = (lo | hi).to(torch.uint8)
+        logger.warning(
+            f"[fp4_pack] 2x byte mismatch: loaded={loaded_weight.shape}/{loaded_weight.dtype} "
+            f"param={param_data.shape}/{param_data.dtype} — packing 1-nibble-per-byte to 2-nibbles-per-byte"
+        )
+        return repacked.reshape(param_data.shape)
+
+    return loaded_weight
+
+
 class BasevLLMParameter(Parameter):
     """
     Base parameter for vLLM linear layers. Extends the torch.nn.parameter
@@ -55,6 +88,7 @@ class BasevLLMParameter(Parameter):
         return self._weight_loader
 
     def _assert_and_load(self, loaded_weight: torch.Tensor):
+        loaded_weight = _maybe_pack_fp4(self.data, loaded_weight)
         assert self.data.shape == loaded_weight.shape
         self.data.copy_(loaded_weight)
 
@@ -112,6 +146,7 @@ class _ColumnvLLMParameter(BasevLLMParameter):
                     self.output_dim,
                     shard_size,
                 )
+                loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
                 assert param_data.shape == loaded_weight.shape
                 param_data.copy_(loaded_weight)
                 return
@@ -120,6 +155,7 @@ class _ColumnvLLMParameter(BasevLLMParameter):
                     self.output_dim, tp_rank * shard_size, shard_size
                 )
 
+        loaded_weight = _maybe_pack_fp4(self.data, loaded_weight)
         assert self.data.shape == loaded_weight.shape
         self.data.copy_(loaded_weight)
 
@@ -169,7 +205,12 @@ class _ColumnvLLMParameter(BasevLLMParameter):
                         self.output_dim, start_idx, shard_size
                     )
 
-        assert param_data.shape == loaded_weight.shape
+        loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
+        assert param_data.shape == loaded_weight.shape, (
+            f"load_merged_column_weight shape mismatch: "
+            f"param_data.shape={param_data.shape} param_data.dtype={param_data.dtype} "
+            f"loaded_weight.shape={loaded_weight.shape} loaded_weight.dtype={loaded_weight.dtype}"
+        )
         param_data.copy_(loaded_weight)
 
     def load_qkv_weight(
@@ -217,6 +258,7 @@ class _ColumnvLLMParameter(BasevLLMParameter):
                     self.output_dim, shard_id * shard_size, shard_size
                 )
 
+        loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
         assert (
             param_data.shape == loaded_weight.shape
         ), f"{param_data.shape=}, {loaded_weight.shape=}"
@@ -262,6 +304,7 @@ class RowvLLMParameter(BasevLLMParameter):
                     shard_size,
                 )
 
+                loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
                 assert param_data.shape == loaded_weight.shape
                 param_data.copy_(loaded_weight)
 
@@ -282,6 +325,7 @@ class RowvLLMParameter(BasevLLMParameter):
         if len(loaded_weight.shape) == 0:
             loaded_weight = loaded_weight.reshape(1)
 
+        loaded_weight = _maybe_pack_fp4(self.data, loaded_weight)
         assert self.data.shape == loaded_weight.shape
         self.data.copy_(loaded_weight)
 
