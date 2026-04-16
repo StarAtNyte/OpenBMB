@@ -22,7 +22,10 @@ fi
 PATCH_FILES=(
     "srt/configs/model_config.py"
     "srt/layers/parameter.py"
+    "srt/layers/linear.py"
+    "srt/layers/vocab_parallel_embedding.py"
     "srt/layers/quantization/modelopt_quant.py"
+    "srt/models/minicpm.py"
 )
 
 for rel in "${PATCH_FILES[@]}"; do
@@ -43,7 +46,6 @@ done
 
 export SGLANG_FLASHINFER_FP4_GEMM_BACKEND="${SGLANG_FLASHINFER_FP4_GEMM_BACKEND:-cutlass}"
 # --tokenizer-path needed because exported NVFP4 dir has custom MiniCPMSALAConfig that AutoTokenizer can't resolve
-# MODEL_PATH_OVERRIDE points to the quantized NVFP4 export; tokenizer stays at original model
 export SGLANG_SERVER_ARGS="${SGLANG_SERVER_ARGS:-} --log-level info --attention-backend minicpm_flashinfer --chunked-prefill-size 8192 --mem-fraction-static 0.70 --dense-as-sparse --skip-server-warmup --quantization modelopt_fp4 --disable-radix-cache --tokenizer-path /models/MiniCPM-SALA --model-path /workspace/nvfp4_model"
 
 echo "[prepare_env] done"

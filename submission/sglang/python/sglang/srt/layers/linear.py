@@ -30,6 +30,7 @@ from sglang.srt.layers.parameter import (
     PerTensorScaleParameter,
     RowvLLMParameter,
     _ColumnvLLMParameter,
+    _maybe_pack_fp4,
 )
 from sglang.srt.layers.quantization.unquant import UnquantizedLinearMethod
 from sglang.srt.layers.utils import pad_or_narrow_weight
@@ -250,6 +251,7 @@ class ReplicatedLinear(LinearBase):
                     param.dtype == loaded_weight.dtype
                 ), "init para dtype and loaded weight dtype should be the same"
 
+        loaded_weight = _maybe_pack_fp4(param.data, loaded_weight)
         assert param.size() == loaded_weight.size()
         param.data.copy_(loaded_weight)
 
@@ -407,6 +409,7 @@ class ColumnParallelLinear(LinearBase):
         if len(loaded_weight.shape) == 0:
             loaded_weight = loaded_weight.reshape(1)
 
+        loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
         assert param_data.shape == loaded_weight.shape
         param_data.copy_(loaded_weight)
 
@@ -1364,6 +1367,7 @@ class RowParallelLinear(LinearBase):
         if len(loaded_weight.shape) == 0:
             loaded_weight = loaded_weight.reshape(1)
 
+        loaded_weight = _maybe_pack_fp4(param_data, loaded_weight)
         assert param_data.shape == loaded_weight.shape
         param_data.copy_(loaded_weight)
 

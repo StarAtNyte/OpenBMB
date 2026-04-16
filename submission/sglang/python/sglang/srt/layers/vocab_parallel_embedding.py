@@ -451,10 +451,18 @@ class VocabParallelEmbedding(torch.nn.Module):
             start_idx = start_idx // packed_factor
             shard_size = shard_size // packed_factor
         else:
-            assert loaded_weight.shape[output_dim] == (
-                self.org_vocab_size
-                // (self.tp_size if self.use_presharded_weights else 1)
-            ), f"{self.org_vocab_size=} {self.use_presharded_weights=} {loaded_weight.shape[output_dim]=}"
+            expected_size = self.org_vocab_size // (
+                self.tp_size if self.use_presharded_weights else 1
+            )
+            # ModelOpt may pad vocab size to an alignment boundary — truncate if needed.
+            if loaded_weight.shape[output_dim] > expected_size:
+                loaded_weight = loaded_weight.narrow(
+                    output_dim, 0, expected_size
+                )
+            assert loaded_weight.shape[output_dim] == expected_size, (
+                f"{self.org_vocab_size=} {self.use_presharded_weights=} "
+                f"{loaded_weight.shape[output_dim]=}"
+            )
 
         # Copy the data.
         if not self.use_presharded_weights:

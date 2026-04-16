@@ -2245,7 +2245,20 @@ def simulate_soar(num_samples: int = None):
             k, _, v = line.partition("=")
             extra_env[k] = v
     server_args_str = extra_env.get("SGLANG_SERVER_ARGS", "")
-    print(f"\n[simulate] SGLANG_SERVER_ARGS = {server_args_str!r}")
+    print(f"\n[simulate] SGLANG_SERVER_ARGS (original) = {server_args_str!r}")
+
+    # Replace --model-path in server args to point to simulate output dir.
+    # prepare_env.sh hardcodes /workspace/nvfp4_model, but we quantize to model_output.
+    import re as _re_sim
+    if "--model-path" in server_args_str:
+        server_args_str = _re_sim.sub(
+            r"--model-path\s+\S+",
+            f"--model-path {model_output}",
+            server_args_str,
+        )
+    else:
+        server_args_str += f" --model-path {model_output}"
+    print(f"[simulate] SGLANG_SERVER_ARGS (patched)  = {server_args_str!r}")
     timings["prepare_env_s"] = round(time.time() - t0, 1)
     print(f"[simulate] Phase 1 done in {timings['prepare_env_s']}s")
 
@@ -2333,14 +2346,214 @@ def simulate_soar(num_samples: int = None):
         print(f"[simulate] Running: {' '.join(eval_cmd)}")
         eval_out, eval_rc = run_streaming(eval_cmd, label="eval")
         timings["eval_s"] = round(time.time() - t0, 1)
-        timings["total_s"] = sum(timings.values())
         print(f"[simulate] Phase 4 done in {timings['eval_s']}s")
+
+        # ── Phase 5: bench_serving.sh (S1 / S8 / Smax) ────────────────────────
+        # Build speed dataset from eval predictions (fixed input+output = same as SOAR server).
+        # The real SOAR speed dataset is private; we approximate using perf_public_set.jsonl
+        # with the model's generated responses from the accuracy eval above as model_response.
+        print("\n" + "="*60)
+        print("Phase 5: bench_serving.sh (S1 / S8 / Smax)")
+        print("="*60)
+        t0 = time.time()
+
+        speed_data_path = "/tmp/simulate_speed_data.jsonl"
+        # Extract predictions from eval output file (latest predictions.jsonl)
+        pred_file = None
+        try:
+            import glob as _glob
+            preds = _glob.glob("/workspace/submission/outputs/*/predictions.jsonl")
+            if preds:
+                pred_file = sorted(preds)[-1]
+        except Exception:
+            pass
+
+        if pred_file and os.path.exists(pred_file):
+            # Convert predictions.jsonl → speed dataset format
+            subprocess.run(["python3", "-c", f"""
+import json
+with open({pred_file!r}) as fin, open({speed_data_path!r}, "w") as fout:
+    for line in fin:
+        item = json.loads(line)
+        q = item.get("question", item.get("input", item.get("prompt", "")))
+        r = item.get("prediction", item.get("response", item.get("output", "")))
+        if q:
+            fout.write(json.dumps({{"question": q, "model_response": r}}) + "\\n")
+"""], check=False)
+            print(f"[simulate] Speed data from predictions: {pred_file}")
+        else:
+            # Fallback: use perf_public_set questions with empty responses
+            subprocess.run(["python3", "-c", f"""
+import json
+with open("/opt/SOAR/eval_dataset/perf_public_set.jsonl") as fin, open({speed_data_path!r}, "w") as fout:
+    for line in fin:
+        item = json.loads(line)
+        q = item.get("question", "")
+        if q:
+            fout.write(json.dumps({{"question": q, "model_response": ""}}) + "\\n")
+"""], check=False)
+            print(f"[simulate] Speed data from perf_public_set (no predictions found)")
+
+        # bench_serving.py needs a tokenizer that loads without trust_remote_code.
+        # The SOAR toolkit's bench_serving uses AutoTokenizer without trust_remote_code=True,
+        # so MiniCPMSALAConfig fails. Fix: copy tokenizer files to a temp dir and patch
+        # tokenizer_config.json to use PreTrainedTokenizerFast (standard, no custom class).
+        import json as _json
+        import shutil as _shutil_bench
+
+        _tokenizer_patch_dir = "/tmp/bench_tokenizer_patched"
+        subprocess.run(["python3", "-c", f"""
+import os, json, shutil
+src = {model_input!r}
+dst = {_tokenizer_patch_dir!r}
+os.makedirs(dst, exist_ok=True)
+for f in ["tokenizer.model", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]:
+    s = os.path.join(src, f)
+    if os.path.exists(s):
+        shutil.copy2(s, os.path.join(dst, f))
+# Patch tokenizer_config.json: remove auto_map / custom tokenizer_class that needs trust_remote_code
+tc_path = os.path.join(dst, "tokenizer_config.json")
+if os.path.exists(tc_path):
+    with open(tc_path) as f:
+        tc = json.load(f)
+    tc.pop("auto_map", None)
+    # Keep tokenizer_class only if it's a standard HF class
+    tc_class = tc.get("tokenizer_class", "")
+    if tc_class and "MiniCPM" in tc_class:
+        tc["tokenizer_class"] = "PreTrainedTokenizerFast"
+    with open(tc_path, "w") as f:
+        json.dump(tc, f, indent=2)
+    print(f"[bench_tok] Patched tokenizer_config at {{dst}}")
+else:
+    # Create minimal tokenizer_config.json
+    with open(tc_path, "w") as f:
+        json.dump({{"tokenizer_class": "PreTrainedTokenizerFast", "model_max_length": 131072}}, f)
+    print(f"[bench_tok] Created minimal tokenizer_config at {{dst}}")
+# Write a minimal config.json with a standard model_type so AutoConfig doesn't try
+# to load MiniCPMSALAConfig (which requires trust_remote_code not set in SOAR bench_serving)
+cfg_path = os.path.join(dst, "config.json")
+with open(cfg_path, "w") as f:
+    json.dump({{"model_type": "llama", "vocab_size": 122880, "hidden_size": 4096,
+               "architectures": ["LlamaForCausalLM"]}}, f)
+print(f"[bench_tok] Created stub config.json (model_type=llama) at {{dst}}")
+"""], check=False, env=merged_env)
+        print(f"[simulate] Patched tokenizer dir: {_tokenizer_patch_dir}")
+
+        speed_levels = [("S1", 1, speed_data_path), ("S8", 8, speed_data_path), ("Smax", None, speed_data_path)]
+        speed_results = {"S1": 0.0, "S8": 0.0, "Smax": 0.0}
+
+        for lvl_label, lvl_conc, lvl_data in speed_levels:
+            print(f"\n[simulate] Bench {lvl_label} ({'conc=' + str(lvl_conc) if lvl_conc else 'unlimited'})...")
+
+            # Check if server is still alive (S8 crash kills it); restart if needed
+            if server_proc.poll() is not None:
+                print(f"[simulate] [{lvl_label}] Server died (rc={server_proc.returncode}), restarting...")
+                server_proc = subprocess.Popen(
+                    server_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    env=merged_env,
+                    cwd=submission_dir,
+                )
+                log_thread2 = threading.Thread(
+                    target=lambda: [print(f"[server] {l.rstrip()}", flush=True) for l in server_proc.stdout],
+                    daemon=True,
+                )
+                log_thread2.start()
+                try:
+                    wait_for_server(server_proc=server_proc)
+                    print(f"[simulate] [{lvl_label}] Server restarted successfully")
+                except Exception as e:
+                    print(f"[simulate] [{lvl_label}] Server restart failed: {e}, skipping bench")
+                    continue
+
+            # Convert dataset to custom format expected by bench_serving
+            converted_path = f"/tmp/bench_sim_{lvl_label}.jsonl"
+            subprocess.run(["python3", "-c", f"""
+import json
+n = 0
+with open({lvl_data!r}) as fin, open({converted_path!r}, "w") as fout:
+    for line in fin:
+        item = json.loads(line)
+        prompt = item.get("question") or item.get("input") or item.get("prompt", "")
+        response = item.get("model_response", "placeholder")
+        if prompt:
+            fout.write(json.dumps({{"conversations": [{{"role": "user", "content": prompt}}, {{"role": "assistant", "content": response}}]}}) + "\\n")
+            n += 1
+print(n)
+"""], check=False, env=merged_env)
+            num_prompts = sum(1 for _ in open(converted_path) if _.strip()) if os.path.exists(converted_path) else 0
+            if num_prompts == 0:
+                print(f"[simulate] [{lvl_label}] No prompts, skipping")
+                continue
+
+            bench_cmd = [
+                "python3", "-m", "sglang.bench_serving",
+                "--backend", "sglang",
+                "--host", "localhost",
+                "--port", "30000",
+                "--dataset-name", "custom",
+                "--dataset-path", converted_path,
+                "--num-prompts", str(num_prompts),
+                "--flush-cache",
+                "--model", _tokenizer_patch_dir,      # prevent bench_serving from querying /v1/models for model path
+                "--tokenizer", _tokenizer_patch_dir,  # patched dir: no MiniCPMSALAConfig auto_map
+                "--sharegpt-output-len", "512",       # fixed output length avoids filtering when responses are empty/short
+            ]
+            if lvl_conc is not None:
+                bench_cmd += ["--max-concurrency", str(lvl_conc)]
+
+            bench_out_lvl, bench_rc_lvl = run_streaming(bench_cmd, label=f"bench_{lvl_label}", env=merged_env)
+
+            dur_match = re.search(r"Benchmark duration \(s\):\s*([0-9.]+)", bench_out_lvl)
+            if dur_match:
+                speed_results[lvl_label] = float(dur_match.group(1))
+                print(f"[simulate] [{lvl_label}] Duration: {speed_results[lvl_label]:.1f}s")
+            else:
+                print(f"[simulate] [{lvl_label}] Could not parse duration from output")
+
+        timings["bench_s"] = round(time.time() - t0, 1)
+        print(f"[simulate] Phase 5 done in {timings['bench_s']}s")
+
+        timings["total_s"] = sum(timings.values())
 
     finally:
         server_proc.terminate()
         server_proc.wait()
 
     # ── Summary ───────────────────────────────────────────────────────────────
+    acc_match = re.search(r"Average Score:\s*([0-9.]+)%?", eval_out)
+    accuracy = float(acc_match.group(1)) if acc_match else None
+
+    # Scoring
+    baseline = 80.0
+    relative_score = (accuracy / baseline * 100) if accuracy else 0
+    if relative_score <= 97:
+        c_coeff = 0.0
+    elif relative_score <= 98:
+        c_coeff = 0.92
+    elif relative_score <= 99:
+        c_coeff = 0.96
+    else:
+        c_coeff = 1.0
+
+    bounty = {"S1": 420, "S8": 420, "Smax": 720}
+    weight = {"S1": 0.4, "S8": 0.3, "Smax": 0.3}
+    perf_score = 0.0
+    speed_lines = []
+    for lvl in ["S1", "S8", "Smax"]:
+        dur = speed_results.get(lvl)
+        if dur and dur > 0:
+            s = min(bounty[lvl] / dur * 100, 100)
+            perf_score += s * weight[lvl]
+            speed_lines.append(f"  {lvl:<6} {dur:>8.1f}s  score={s:.1f}  (target {bounty[lvl]}s, weight {weight[lvl]*100:.0f}%)")
+        else:
+            speed_lines.append(f"  {lvl:<6}      N/A  (not measured)")
+
+    final_score = perf_score * c_coeff
+
     print("\n" + "="*60)
     print("SOAR SIMULATION SUMMARY")
     print("="*60)
@@ -2349,12 +2562,23 @@ def simulate_soar(num_samples: int = None):
     print(f"  {'SOAR 5hr limit':<25} 18000s (300 min)")
     budget_used = timings.get("total_s", 0) / 18000 * 100
     print(f"  {'Budget used':<25} {budget_used:.1f}%")
+    print(f"\n  Accuracy:        {accuracy}%  (relative={relative_score:.1f}%  C={c_coeff})")
+    print(f"  Speed benchmark:")
+    for line in speed_lines:
+        print(line)
+    print(f"\n  Performance Score: {perf_score:.2f}")
+    print(f"  Final Score:       {final_score:.2f}  (perf × C={c_coeff})")
 
-    acc_match = re.search(r"Average Score:\s*([0-9.]+)%?", eval_out)
-    accuracy = float(acc_match.group(1)) if acc_match else None
-    print(f"\n  Accuracy: {accuracy}%")
-
-    return {"success": True, "timings": timings, "accuracy": accuracy}
+    return {
+        "success": True,
+        "timings": timings,
+        "accuracy": accuracy,
+        "relative_score": relative_score,
+        "c_coeff": c_coeff,
+        "speed": speed_results,
+        "perf_score": perf_score,
+        "final_score": final_score,
+    }
 
 
 # ============================================================================

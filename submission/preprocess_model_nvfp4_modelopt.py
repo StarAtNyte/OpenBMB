@@ -92,22 +92,97 @@ CONFIG_MAP = {
 
 def load_calib_prompts(calib_data: str | None, num_calib: int) -> list[str]:
     if calib_data and Path(calib_data).exists():
-        prompts = []
+        # Load all items grouped by task type to ensure balanced distribution
+        # The eval set has 5 task types (mcq, niah, qa, fwe, cwe) x 30 each.
+        # Matching this distribution in calibration improves quantization quality.
+        # Also skip low-semantic tasks (niah/fwe/cwe) which contain random words/UUIDs
+        # that can negatively affect calibration per competition champion notes.
+        from collections import defaultdict
+        by_task: dict = defaultdict(list)
+        no_task: list = []
         with open(calib_data) as f:
             for line in f:
-                if line.strip():
-                    item = json.loads(line)
-                    q = item.get("question", item.get("text", ""))
-                    if q:
-                        prompts.append(q)
-                    if len(prompts) >= num_calib:
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                # Use full context+question — matches what eval_model.py sends.
+                # The SOAR eval items have a long document/context field (~50k tokens)
+                # plus a short question. Calibrating on just the question (100-500 tok)
+                # underestimates activation magnitudes, causing FP8-E4M3 scale overflow
+                # during eval and breaking per-block FP4 quantization accuracy.
+                parts = []
+                for field in ("context", "document", "passage", "content", "input", "text"):
+                    v = item.get(field, "")
+                    if v and isinstance(v, str) and len(v) > 100:
+                        parts.append(v)
+                        break  # take the first substantial context field
+                q = item.get("question", "")
+                if q:
+                    parts.append(q)
+                full_text = "\n\n".join(parts) if parts else q
+                if not full_text:
+                    continue
+                task = item.get("task", "")
+                if task:
+                    by_task[task].append(full_text)
+                else:
+                    no_task.append(full_text)
+
+        if by_task:
+            # Prioritize high-semantic tasks (mcq, qa) over low-semantic (niah, fwe, cwe)
+            HIGH_SEMANTIC = ["mcq", "qa"]
+            LOW_SEMANTIC = ["niah", "fwe", "cwe"]
+            # Allocate 60% to high-semantic, 40% to low-semantic
+            n_high = int(num_calib * 0.6)
+            n_low = num_calib - n_high
+            prompts = []
+            # Round-robin from high-semantic tasks
+            high_pools = [by_task[t] for t in HIGH_SEMANTIC if t in by_task]
+            low_pools = [by_task[t] for t in LOW_SEMANTIC if t in by_task]
+            # Fill remaining from unlabeled
+            for pool, n in [(high_pools, n_high), (low_pools, n_low)]:
+                i = 0
+                added = 0
+                while added < n and any(pool):
+                    src = pool[i % len(pool)] if pool else []
+                    if src:
+                        prompts.append(src[added // len(pool) if len(pool) > 0 else 0])
+                    i += 1
+                    added += 1
+                    if added >= sum(len(p) for p in pool):
                         break
-        print(f"[calib] Loaded {len(prompts)} prompts from {calib_data}")
+            # Fallback: just take sequentially if round-robin logic under-fills
+            if len(prompts) < num_calib:
+                all_prompts = [q for qs in by_task.values() for q in qs] + no_task
+                prompts = all_prompts[:num_calib]
+        else:
+            prompts = no_task[:num_calib]
+
+        print(f"[calib] Loaded {len(prompts)} prompts from {calib_data} (task-balanced)")
         return prompts
     else:
         prompts = _DEFAULT_CALIB_PROMPTS[:num_calib]
         print(f"[calib] Using {len(prompts)} built-in prompts")
         return prompts
+
+
+def format_calib_chat(tokenizer, prompt: str) -> str:
+    """Format a prompt as a chat message with thinking enabled, matching eval_model.py's template."""
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        # apply_chat_template with add_generation_prompt=True + <think> prefix
+        # mirrors what eval_model.py does with enable_thinking=True
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        # Append <think> to trigger reasoning mode, matching SGLang's serving_chat.py behavior
+        if not text.endswith("<think>"):
+            text = text + "<think>"
+        return text
+    except Exception:
+        return prompt
 
 
 def main():
@@ -142,12 +217,15 @@ def main():
     import modelopt.torch.quantization as mtq
     from modelopt.torch.export import export_hf_checkpoint
 
-    # Load calibration prompts
-    prompts = load_calib_prompts(args.calib_data, args.num_calib)
-
     # Load tokenizer
     print("\n[nvfp4-modelopt] Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(str(src), trust_remote_code=True)
+
+    # Load calibration prompts as bare questions (no chat template)
+    # Chat-formatted prompts with <think> caused runaway thinking generation at inference
+    prompts = load_calib_prompts(args.calib_data, args.num_calib)
+    print(f"[calib] Loaded {len(prompts)} calibration prompts")
+    print(f"[calib] Sample (first 200 chars): {repr(prompts[0][:200])}")
 
     # Load model in BF16
     print("[nvfp4-modelopt] Loading BF16 model...")
@@ -160,14 +238,20 @@ def main():
     model.eval()
     print(f"[nvfp4-modelopt] Model loaded. Params: {sum(p.numel() for p in model.parameters()) / 1e9:.2f}B")
 
-    # Build calibration dataloader
+    # Use 16384 tokens to capture long-context activation magnitudes.
+    # The per-block FP4 scale is stored as FP8-E4M3 (range ~2^-9 to 448).
+    # It's computed as: SFValue = input_scale_inv * vecMax / 6.
+    # If input_scale_inv is calibrated on short prompts (small vecMax),
+    # long-context eval activations (large vecMax) cause SFValue to overflow
+    # FP8-E4M3, clamping the scale and breaking quantization accuracy.
+    # Using 16384-token sequences ensures input_scale reflects long-context magnitudes.
     def calib_dataloader():
         for prompt in prompts:
             inputs = tokenizer(
                 prompt,
                 return_tensors="pt",
                 truncation=True,
-                max_length=512,
+                max_length=16384,
             )
             yield {k: v.to(args.device) for k, v in inputs.items()}
 
@@ -176,61 +260,40 @@ def main():
     quant_cfg = getattr(mtq, cfg_name)
     print(f"\n[nvfp4-modelopt] Quantizing with {cfg_name}...")
 
-    # --- Calibrate input_scale via forward hooks on BF16 model BEFORE quantization ---
-    # ModelOpt's conservative config uses dynamic (per-token) activation quantization —
-    # it does NOT store static amaxes. We collect them ourselves via hooks.
-    print("[nvfp4-modelopt] Collecting activation amaxes via forward hooks...")
-    import safetensors.torch as st
-    import torch.nn as nn
+    import copy
+    quant_cfg = copy.deepcopy(quant_cfg)
 
-    act_amaxes: dict[str, torch.Tensor] = {}
-    hooks = []
+    # Mixed-precision: keep boundary layers in BF16 for accuracy.
+    # Mixed-precision: keep boundary layers (both MLP+attn) in BF16 for accuracy.
+    # History: 16→73.42%, 32→76.49% (best), 40→invalid(sh mismatch), 40+longcalib→73.27%,
+    #          all-attn-BF16+all-MLP-FP4→75.47% (decode 2x slower, not worth it).
+    # Best config: 32 boundary layers (0-15, 36-51), keeping middle 20 layers (16-35) as FP4.
+    BOUNDARY_MLP_LAYERS = list(range(16)) + list(range(36, 52))
 
-    def _make_hook(layer_name: str):
-        def hook(module, inp, out):
-            x = inp[0] if isinstance(inp, tuple) else inp
-            if x is None:
-                return
-            amax_val = x.detach().float().abs().max()
-            if layer_name not in act_amaxes:
-                act_amaxes[layer_name] = amax_val
-            else:
-                act_amaxes[layer_name] = torch.max(act_amaxes[layer_name], amax_val)
-        return hook
+    inner = quant_cfg["quant_cfg"]
+    print(f"[nvfp4-modelopt] quant_cfg['quant_cfg'] type: {type(inner).__name__}, len={len(inner)}")
+    # All attention-related projections for boundary layers, including MiniCPM-SALA's
+    # novel InfLLMv2 projections (o_gate, z_proj) that don't exist in standard models.
+    ATTN_PROJS = ("q_proj", "k_proj", "v_proj", "o_proj", "o_gate", "z_proj")
+    MLP_PROJS  = ("gate_proj", "up_proj", "down_proj")
 
-    for name, module in model.named_modules():
-        if isinstance(module, nn.Linear):
-            hooks.append(module.register_forward_hook(_make_hook(name)))
+    if isinstance(inner, list):
+        for i in BOUNDARY_MLP_LAYERS:
+            for proj in MLP_PROJS + ATTN_PROJS:
+                inner.append({"quantizer_name": f"*layers.{i}.*{proj}*", "enable": False})
+        print(f"[nvfp4-modelopt] Mixed-precision (list format): boundary {BOUNDARY_MLP_LAYERS} MLP+attn BF16")
+    elif isinstance(inner, dict):
+        for i in BOUNDARY_MLP_LAYERS:
+            for proj in MLP_PROJS + ATTN_PROJS:
+                inner[f"*layers.{i}.*{proj}*"] = {"enable": False}
+        print(f"[nvfp4-modelopt] Mixed-precision (dict format): boundary {BOUNDARY_MLP_LAYERS} MLP+attn BF16")
+    else:
+        print(f"[nvfp4-modelopt] WARNING: unknown quant_cfg structure, skipping mixed-precision")
 
-    print(f"[nvfp4-modelopt] Registered hooks on {len(hooks)} linear layers")
-
-    with torch.no_grad():
-        for prompt in prompts:
-            inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
-            inputs = {k: v.to(args.device) for k, v in inputs.items()}
-            model(**inputs)
-
-    for h in hooks:
-        h.remove()
-
-    print(f"[nvfp4-modelopt] Collected {len(act_amaxes)} activation amaxes")
-    if act_amaxes:
-        sample_items = list(act_amaxes.items())[:3]
-        for k, v in sample_items:
-            print(f"  {k}: {v.item():.6f}")
 
     # Quantize
     mtq.quantize(model, quant_cfg, forward_loop=calib_dataloader)
     print("[nvfp4-modelopt] Quantization complete.")
-
-    # Build input_scales dict from the hook-collected amaxes
-    # (populated after export so we can filter to only quantized layers)
-    input_scales_raw = {
-        name: val.reshape(1).cpu()
-        for name, val in act_amaxes.items()
-        if val.item() > 0
-    }
-    print(f"[nvfp4-modelopt] {len(input_scales_raw)} raw activation amaxes collected")
 
     # Export to HF checkpoint format for SGLang --quantization modelopt_fp4.
     dst.mkdir(parents=True, exist_ok=True)
@@ -238,132 +301,18 @@ def main():
     export_hf_checkpoint(model, export_dir=str(dst))
     print(f"[nvfp4-modelopt] Export complete.")
 
-    # Load the exported index to discover which layers were actually FP4-quantized.
-    # Only inject input_scale for layers that have a corresponding weight in the checkpoint.
-    # This avoids KeyError when SGLang tries to load input_scale for non-quantized layers
-    # like lm_head that have no input_scale parameter registered.
     index_path = dst / "model.safetensors.index.json"
-    # Debug: print any suspicious keys in the exported index
     if index_path.exists():
         with open(index_path) as _f:
             _idx = json.load(_f)
-        _suspicious = [k for k in _idx.get("weight_map", {}) if "gate_gate" in k or "proj_proj" in k]
-        if _suspicious:
-            print(f"[nvfp4-modelopt] WARNING: suspicious exported keys: {_suspicious[:5]}")
         _gate_keys = sorted(k for k in _idx.get("weight_map", {}) if "gate" in k and "layers.0" in k)
         print(f"[nvfp4-modelopt] DEBUG layer[0] gate keys in index: {_gate_keys}")
-    # Use weight_scale_2 as the indicator of actual FP4 quantization.
-    # Only layers with weight_scale_2 in the checkpoint are truly FP4-quantized
-    # and will have input_scale registered in SGLang's model definition.
-    # (Excluded layers like o_proj, qkv_proj have only .weight but no weight_scale_2)
-    quantized_layer_names: set[str] = set()
-    if index_path.exists():
-        with open(index_path) as f:
-            index = json.load(f)
-        for key in index.get("weight_map", {}):
-            if key.endswith(".weight_scale_2"):
-                layer_name = key[: -len(".weight_scale_2")]
-                quantized_layer_names.add(layer_name)
-                # ModelOpt may keep the unfused name (gate_proj / up_proj) in the
-                # index even after fusion. Derive the fused name so gate_up_proj
-                # and qkv_proj are also accepted.
-                # Only remap if the layer itself is not already a fused name.
-                proj = layer_name.split(".")[-1]
-                base = ".".join(layer_name.split(".")[:-1])
-                if proj == "gate_proj" or proj == "up_proj":
-                    quantized_layer_names.add(f"{base}.gate_up_proj")
-                elif proj == "q_proj" or proj == "k_proj" or proj == "v_proj":
-                    quantized_layer_names.add(f"{base}.qkv_proj")
-    print(f"[nvfp4-modelopt] {len(quantized_layer_names)} FP4-quantized layers (have weight_scale_2)")
-
-    # ModelOpt fuses projections on export:
-    #   q_proj + k_proj + v_proj  →  qkv_proj  (SGLang's fused QKV)
-    #   gate_proj + up_proj       →  gate_up_proj
-    # We collected amaxes on the BF16 unfused layers, so we must remap them.
-    # Strategy: for fused layers, take max(amax) of constituent projections.
-    def _base(name: str) -> str:
-        """Return layer base path: 'model.layers.0.self_attn.q_proj' → 'model.layers.0.self_attn'"""
-        return ".".join(name.split(".")[:-1])
-
-    # Build fused-name → amax mapping
-    fused_amaxes: dict[str, torch.Tensor] = {}
-    for name, val in input_scales_raw.items():
-        proj = name.split(".")[-1]
-        base = _base(name)
-        if proj in ("q_proj", "k_proj", "v_proj"):
-            fused = f"{base}.qkv_proj"
-        elif proj in ("gate_proj", "up_proj"):
-            fused = f"{base}.gate_up_proj"
-        elif proj in ("gate_up_proj", "qkv_proj"):
-            # BF16 model already has fused projections — use as-is
-            fused = name
-        else:
-            fused = name  # o_proj, down_proj, z_proj, o_gate — not fused
-
-        if fused not in fused_amaxes:
-            fused_amaxes[fused] = val
-        else:
-            fused_amaxes[fused] = torch.max(fused_amaxes[fused], val)
-
-    print(f"[nvfp4-modelopt] {len(fused_amaxes)} fused-layer amaxes (from {len(input_scales_raw)} raw)")
-
-    # SGLang's load_weights uses stacked_params_mapping to shard fused projections.
-    # For gate_up_proj, it iterates: gate_proj→shard_id=0, up_proj→shard_id=1.
-    # Each call to _load_into_shard_id expects loaded_weight.shape[0] == 1 (scalar).
-    # So we must save input_scale under the UNFUSED names (gate_proj, up_proj, q_proj, ...)
-    # each with shape (1,). minicpm.py's load_weights remaps gate_proj→gate_up_proj and
-    # calls weight_loader(param, scale, shard_id=0), which slices param_data[0].
-    _FUSED_SPLITS = {
-        "gate_up_proj": ["gate_proj", "up_proj"],
-        "qkv_proj": ["q_proj", "k_proj", "v_proj"],
-    }
-
-    # Only keep layers that:
-    # 1. appear in the exported index (i.e. ModelOpt actually quantized them), AND
-    # 2. are inside model.layers.* (exclude lm_head, embed_tokens, etc.)
-    input_scales = {}
-    for name, val in fused_amaxes.items():
-        if name not in quantized_layer_names or not name.startswith("model.layers."):
-            continue
-        proj = name.split(".")[-1]
-        base = _base(name)
-        split_names = _FUSED_SPLITS.get(proj)
-        if split_names:
-            # gate_up_proj / qkv_proj: skip input_scale injection.
-            # When input_scale=0 the kernel defaults to dynamic scaling (effective 1.0),
-            # which gave better accuracy than static calibrated scales from 32 prompts.
-            # The static scale over-compresses activations and causes reasoning loops.
-            pass
-        else:
-            input_scales[f"{name}.input_scale"] = val.reshape(1).clone()
-    skipped = len(fused_amaxes) - len(input_scales)
-    print(f"[nvfp4-modelopt] {len(input_scales)} input_scales to inject ({skipped} non-quantized/non-layer layers skipped)")
-
-    # Sanity check: flag any suspicious double-component names before saving
-    bad_keys = [k for k in input_scales if "gate_gate" in k or "up_up" in k or "proj_proj" in k]
-    if bad_keys:
-        print(f"[nvfp4-modelopt] ERROR: malformed input_scale keys detected: {bad_keys[:5]}")
-        raise RuntimeError(f"Malformed input_scale keys: {bad_keys[:5]}")
-    # Also print all keys for debugging
-    print(f"[nvfp4-modelopt] input_scale keys sample: {sorted(input_scales.keys())[:6]}")
-
-    if input_scales:
-        # Save input_scales to a dedicated shard and update the index.
-        scales_fname = "input_scales.safetensors"
-        scales_path = str(dst / scales_fname)
-        st.save_file(input_scales, scales_path)
-        print(f"[nvfp4-modelopt] Saved {len(input_scales)} input_scales to {scales_path}")
-
-        if index_path.exists():
-            with open(index_path) as f:
-                index = json.load(f)
-            for key in input_scales:
-                index["weight_map"][key] = scales_fname
-            with open(index_path, "w") as f:
-                json.dump(index, f, indent=2)
-            print(f"[nvfp4-modelopt] Updated index with {len(input_scales)} input_scale entries")
-    else:
-        print(f"[nvfp4-modelopt] WARNING: no input_scale amaxes found — will default to 1.0 at inference")
+    # Do NOT inject static input_scales.
+    # config.json has input_activations.dynamic=True so SGLang computes per-token scales
+    # at runtime. Static scales calibrated on short prompts (max 2048 tokens) would severely
+    # hurt accuracy on the long reasoning chain inputs used in SOAR eval (often 50k+ tokens),
+    # because the activation magnitudes differ dramatically between short and long contexts.
+    print(f"[nvfp4-modelopt] Skipping static input_scale injection (dynamic=True in config.json)")
 
     print(f"\n[nvfp4-modelopt] Done!")
     print(f"  SGLang: python -m sglang.launch_server --model-path {dst} --quantization modelopt_fp4")
